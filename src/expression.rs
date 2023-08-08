@@ -3,6 +3,10 @@ use crate::token_literal::TokenLiteral;
 
 #[derive(Debug)]
 pub enum Expr {
+    Assign {
+        name: Token,
+        value: Box<Expr>
+    },
     Binary {
         left: Box<Expr>,
         operator: Token,

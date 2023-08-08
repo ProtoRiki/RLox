@@ -48,6 +48,12 @@ impl Parser {
         if self.match_token(&[PRINT]) {
             return self.print_statement();
         }
+
+        if self.match_token(&[LEFT_BRACE]) {
+            let statements = self.block_statement()?;
+            return Ok(Stmt::Block {statements});
+        }
+
         self.expression_statement()
     }
 
@@ -63,8 +69,38 @@ impl Parser {
         Ok(Stmt::Expression { expression: expr })
     }
 
+    fn block_statement(&mut self) -> Result<Vec<Stmt>, String> {
+        let mut statements = Vec::new();
+        while !self.check(&RIGHT_BRACE) && !self.is_at_end() {
+            let declaration = self.declaration()?;
+            statements.push(declaration)
+        }
+        self.consume(RIGHT_BRACE, "Expect '}' after block.")?;
+        Ok(statements)
+    }
+
     fn expression(&mut self) -> Result<Box<Expr>, String> {
-        self.equality()
+        self.assignment()
+    }
+
+    fn assignment(&mut self) -> Result<Box<Expr>, String> {
+        let expr = self.equality()?;
+        if self.match_token(&[EQUAL]) {
+            let equals = self.previous();
+            // Assignment is right-associative, recursively call assignment to parse rhs
+            let value = self.assignment()?;
+            return match *expr {
+                // Convert the r-value expression node into an l-value representation.
+                Variable { name } => Ok(Box::from(Assign { name, value })),
+                _ => {
+                    // Error if lhs is an invalid assignment target
+                    // Report error but do not throw it
+                    lox::token_error(&equals, "Invalid assignment target.");
+                    Ok(expr)
+                }
+            }
+        }
+        Ok(expr)
     }
 
     fn equality(&mut self) -> Result<Box<Expr>, String> {
