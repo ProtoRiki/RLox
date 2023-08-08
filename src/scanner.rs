@@ -33,7 +33,7 @@ impl Scanner {
             self.scan_token();
         }
         self.tokens.push(Token::new(EOF, String::from(""), NULL, self.line));
-        return mem::take(&mut self.tokens);
+        mem::take(&mut self.tokens)
     }
 
     /// None gets the current char
@@ -169,7 +169,7 @@ impl Scanner {
     }
 
     fn is_digit(c: u8) -> bool {
-        c >= b'0' && c <= b'9'
+        c.is_ascii_digit()
     }
 
     fn number(&mut self) {
@@ -191,7 +191,7 @@ impl Scanner {
     }
 
     fn is_alpha(c: u8) -> bool {
-        (c >= b'a' && c <= b'z') || (c >= b'A' && c <= b'Z') || c == b'_'
+        c.is_ascii_lowercase() || c.is_ascii_uppercase() || c == b'_'
     }
 
     fn is_alphanumeric(c: u8) -> bool {

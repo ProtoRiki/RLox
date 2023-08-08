@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use crate::token_type::TokenType;
 use crate::token_literal::TokenLiteral;
 
@@ -18,8 +19,9 @@ impl Token {
             line
         }
     }
-
-    pub fn to_string(&self) -> String {
-        format!("{:?} {} {:?}", self.token_type, self.lexeme, self.literal)
+}
+impl Display for Token {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?} {} {:?}", self.token_type, self.lexeme, self.literal)
     }
 }

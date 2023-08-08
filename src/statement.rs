@@ -1,6 +1,17 @@
 use crate::expression::Expr;
+use crate::token::Token;
 
 pub enum Stmt {
-    Expression(Box<Expr>),
-    Print(Box<Expr>),
+    Expression {
+        expression: Box<Expr>,
+    },
+
+    Print {
+        expression: Box<Expr>,
+    },
+
+    Var {
+        name: Token,
+        initializer: Box<Expr>,
+    },
 }

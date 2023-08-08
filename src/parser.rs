@@ -1,12 +1,12 @@
-use crate::lox;
-
-use crate::token::Token;
-use crate::expression::Expr::{self, *};
-use crate::token_type::TokenType::{self, *};
-use crate::statement::Stmt;
-
 use std::mem;
+
+use crate::expression::Expr::{self, *};
+use crate::lox;
+use crate::statement::Stmt;
+use crate::statement::Stmt::Var;
+use crate::token::Token;
 use crate::token_literal::TokenLiteral::{LOX_BOOL, NULL};
+use crate::token_type::TokenType::{self, *};
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -21,10 +21,27 @@ impl Parser {
     pub fn parse(&mut self) -> Result<Vec<Stmt>, String> {
         let mut statements: Vec<Stmt> = Vec::new();
         while !self.is_at_end() {
-            let line_statement = self.statement()?;
+            let line_statement = self.declaration()?;
             statements.push(line_statement);
         }
         Ok(statements)
+    }
+
+    fn declaration(&mut self) -> Result<Stmt, String> {
+        if self.match_token(&[VAR]) {
+            return self.var_declaration();
+        }
+        self.statement().map_err(|error| { self.synchronize(); error })
+    }
+
+    fn var_declaration(&mut self) -> Result<Stmt, String> {
+        let name = self.consume(IDENTIFIER, "Expect variable name.")?;
+        let mut initializer = Box::from(Literal { value: NULL });
+        if self.match_token(&[EQUAL]) {
+            initializer = self.expression()?;
+        }
+        self.consume(SEMICOLON, "Expect ';' after variable declaration.")?;
+        Ok(Var { name, initializer })
     }
 
     fn statement(&mut self) -> Result<Stmt, String> {
@@ -37,25 +54,29 @@ impl Parser {
     fn print_statement(&mut self) -> Result<Stmt, String> {
         let value = self.expression()?;
         self.consume(SEMICOLON, "Expect ';' after value")?;
-        Ok(Stmt::Print(value))
+        Ok(Stmt::Print { expression: value })
     }
 
     fn expression_statement(&mut self) -> Result<Stmt, String> {
         let expr = self.expression()?;
-        self.consume(SEMICOLON, "Expect ';' after value")?;
-        Ok(Stmt::Expression(expr))
+        self.consume(SEMICOLON, "Expect ';' after expression")?;
+        Ok(Stmt::Expression { expression: expr })
     }
 
     fn expression(&mut self) -> Result<Box<Expr>, String> {
         self.equality()
     }
 
-    fn equality(&mut self) -> Result<Box<Expr>, String>{
+    fn equality(&mut self) -> Result<Box<Expr>, String> {
         let mut left = self.comparison()?;
         while self.match_token(&[BANG_EQUAL, EQUAL_EQUAL]) {
             let operator = self.previous();
             let right = self.comparison()?;
-            left = Box::from(Binary { left, operator, right });
+            left = Box::from(Binary {
+                left,
+                operator,
+                right,
+            });
         }
         Ok(left)
     }
@@ -101,7 +122,11 @@ impl Parser {
         while self.match_token(&[GREATER, GREATER_EQUAL, LESS, LESS_EQUAL]) {
             let operator = self.previous();
             let right = self.term()?;
-            left = Box::from(Binary { left, operator, right });
+            left = Box::from(Binary {
+                left,
+                operator,
+                right,
+            });
         }
         Ok(left)
     }
@@ -111,7 +136,11 @@ impl Parser {
         while self.match_token(&[MINUS, PLUS]) {
             let operator = self.previous();
             let right = self.factor()?;
-            left = Box::from(Binary { left, operator, right} )
+            left = Box::from(Binary {
+                left,
+                operator,
+                right,
+            })
         }
         Ok(left)
     }
@@ -121,7 +150,11 @@ impl Parser {
         while self.match_token(&[SLASH, STAR]) {
             let operator = self.previous();
             let right = self.unary()?;
-            left = Box::from(Binary { left, operator, right });
+            left = Box::from(Binary {
+                left,
+                operator,
+                right,
+            });
         }
         Ok(left)
     }
@@ -131,7 +164,7 @@ impl Parser {
             let operator = self.previous();
             return match self.unary() {
                 Ok(right) => Ok(Box::from(Unary { operator, right })),
-                Err(msg) => Err(msg)
+                Err(msg) => Err(msg),
             };
         }
         self.primary()
@@ -139,13 +172,24 @@ impl Parser {
 
     fn primary(&mut self) -> Result<Box<Expr>, String> {
         if self.match_token(&[NUMBER, STRING]) {
-            return Ok(Box::new(Literal {value: self.previous().literal}));
+            return Ok(Box::new(Literal {
+                value: self.previous().literal,
+            }));
         }
         if self.match_token(&[TRUE]) {
-            return Ok(Box::new(Literal {value: LOX_BOOL(true)}));
+            return Ok(Box::new(Literal {
+                value: LOX_BOOL(true),
+            }));
         }
         if self.match_token(&[FALSE]) {
-            return Ok(Box::new(Literal {value: LOX_BOOL(false)}));
+            return Ok(Box::new(Literal {
+                value: LOX_BOOL(false),
+            }));
+        }
+        if self.match_token(&[IDENTIFIER]) {
+            return Ok(Box::new(Variable {
+                name: self.previous()
+            }));
         }
         if self.match_token(&[LEFT_PAREN]) {
             let expr = self.expression()?;
@@ -156,10 +200,10 @@ impl Parser {
         Err(String::from("Expect expression."))
     }
 
-    fn consume(&mut self, token_type: TokenType, message: &str) -> Result<Token, String>{
+    fn consume(&mut self, token_type: TokenType, message: &str) -> Result<Token, String> {
         if self.check(&token_type) {
             self.advance();
-            return Ok(self.previous())
+            return Ok(self.previous());
         }
         lox::token_error(self.peek(), message);
         Err(String::from(message))
@@ -175,10 +219,9 @@ impl Parser {
                 CLASS | FUN | VAR | FOR | IF | WHILE | PRINT | RETURN => {
                     return;
                 }
-                _ => ()
+                _ => (),
             }
         }
         self.advance();
     }
-
 }

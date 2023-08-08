@@ -6,19 +6,23 @@ pub enum Expr {
     Binary {
         left: Box<Expr>,
         operator: Token,
-        right: Box<Expr>
+        right: Box<Expr>,
     },
 
     Grouping {
-        expression: Box<Expr>
+        expression: Box<Expr>,
     },
 
     Literal {
-        value: TokenLiteral
+        value: TokenLiteral,
     },
 
     Unary {
         operator: Token,
-        right: Box<Expr>
-    }
+        right: Box<Expr>,
+    },
+
+    Variable {
+        name: Token,
+    },
 }

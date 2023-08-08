@@ -7,23 +7,26 @@ mod parser;
 mod expression;
 mod interpreter;
 mod statement;
+mod environment;
 
 use std::env;
+use std::cmp::Ordering;
 use std::process;
+
 use lox::{run_file, run_prompt};
+
+const ARGS_LIMIT: usize = 2;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() > 2 {
-        println!("usage: rlox script");
-        process::exit(64);
-    }
-    else if args.len() == 2 {
-        run_file(&args[1]);
-    }
-    else {
-        run_prompt();
+    match args.len().cmp(&ARGS_LIMIT) {
+        Ordering::Greater => {
+            println!("usage: rlox script");
+            process::exit(64);
+        },
+        Ordering::Equal => run_file(&args[1]),
+        Ordering::Less => run_prompt(),
     }
 }
 

@@ -1,4 +1,6 @@
-#[derive(Debug)]
+use std::fmt::{Display, Formatter};
+
+#[derive(Debug, Clone)]
 #[allow(non_camel_case_types)]
 pub enum TokenLiteral {
     LOX_STRING(String),
@@ -7,13 +9,13 @@ pub enum TokenLiteral {
     NULL
 }
 
-impl TokenLiteral {
-    pub fn to_string(&self) -> String {
+impl Display for TokenLiteral {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            TokenLiteral::LOX_STRING(value) => value.clone(),
-            TokenLiteral::LOX_NUMBER(number) => format!("{}", number),
-            TokenLiteral::LOX_BOOL(boolean) => format!("{}", boolean),
-            TokenLiteral::NULL => String::from("nil"),
+            TokenLiteral::LOX_STRING(value) => write!(f, "{value}"),
+            TokenLiteral::LOX_NUMBER(number) => write!(f, "{}", number),
+            TokenLiteral::LOX_BOOL(boolean) => write!(f, "{}", boolean),
+            TokenLiteral::NULL => write!(f, "nil"),
         }
     }
 }

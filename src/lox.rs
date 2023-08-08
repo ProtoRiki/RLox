@@ -3,7 +3,6 @@ use std::io::Write;
 use std::fs;
 use std::process;
 
-
 use crate::token::Token;
 use crate::token_type::TokenType::EOF;
 use crate::scanner::Scanner;
@@ -12,13 +11,13 @@ use crate::interpreter::{Interpreter, InterpreterError};
 
 static mut HAD_ERROR: bool = false;
 static mut HAD_RUNTIME_ERROR: bool = false;
-static INTERPRETER: Interpreter = Interpreter{};
-// Make interpreter static so that successive calls to run()
-// inside a REPL session reuse the same interpreter.
 
 pub fn run_file(path: &str) {
     match fs::read_to_string(path) {
-        Ok(file_str) => run(file_str),
+        Ok(file_str) => {
+            let mut interpreter = Interpreter::new();
+            run(&mut interpreter, file_str)
+        },
         Err(err) => {
             eprintln!("{err}");
             unsafe {
@@ -37,6 +36,7 @@ pub fn run_file(path: &str) {
 }
 
 pub fn run_prompt() {
+    let mut interpreter = Interpreter::new();
     loop {
         print!("> ");
         io::stdout().flush().unwrap();
@@ -46,7 +46,7 @@ pub fn run_prompt() {
                 if n == 0 {
                     break;
                 }
-                run(buffer);
+                run(&mut interpreter, buffer);
                 unsafe {
                     HAD_ERROR = false;
                 }
@@ -59,16 +59,16 @@ pub fn run_prompt() {
     }
 }
 
-pub fn run(source: String) {
+pub fn run(interpreter: &mut Interpreter, source: String) {
     let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens();
     let mut parser = Parser::new(tokens);
-    let expression = parser.parse();
-    if expression.is_err() {
+    let statements = parser.parse();
+    if statements.is_err() {
         return;
     }
-    let expression = expression.unwrap();
-    INTERPRETER.interpret(expression);
+    let statements = statements.unwrap();
+    interpreter.interpret(statements);
 }
 
 pub fn error(line: i32, message: &str) {
@@ -86,9 +86,9 @@ pub fn token_error(token: &Token, message: &str) {
 
 pub fn runtime_error(error: &InterpreterError) {
     match error {
-        InterpreterError::LiteralError(msg) => eprintln!("{}", msg),
+        InterpreterError::LiteralError(msg) => eprintln!("Runtime Error {}", msg),
         InterpreterError::OperatorError { operator, msg } => {
-            eprintln!("{}\n[line {}]", msg, operator.line);
+            eprintln!("[line {}] Runtime Error {}", operator.line, msg);
         }
     }
     unsafe { HAD_RUNTIME_ERROR = true }
