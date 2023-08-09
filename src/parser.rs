@@ -36,7 +36,7 @@ impl Parser {
 
     fn var_declaration(&mut self) -> Result<Stmt, String> {
         let name = self.consume(IDENTIFIER, "Expect variable name.")?;
-        let mut initializer = Box::from(Literal { value: NULL });
+        let mut initializer = Box::new(Literal { value: NULL });
         if self.match_token(&[EQUAL]) {
             initializer = self.expression()?;
         }
@@ -52,6 +52,10 @@ impl Parser {
         if self.match_token(&[LEFT_BRACE]) {
             let statements = self.block_statement()?;
             return Ok(Stmt::Block {statements});
+        }
+
+        if self.match_token(&[IF]) {
+            return self.if_statement();
         }
 
         self.expression_statement()
@@ -79,6 +83,19 @@ impl Parser {
         Ok(statements)
     }
 
+    fn if_statement(&mut self) -> Result<Stmt, String> {
+        self.consume(LEFT_PAREN, "Expect '(' after 'if'")?;
+        let condition = self.expression()?;
+        self.consume(RIGHT_PAREN, "Expect ')' after if-condition")?;
+        let then_branch = Box::new(self.statement()?);
+        let else_branch = if self.match_token(&[ELSE]) {
+            Box::new(self.statement()?)
+        } else {
+            Box::new(Stmt::Expression { expression: Box::new(Literal { value: NULL })})
+        };
+        Ok(Stmt::If {expression: condition, then_branch, else_branch})
+    }
+
     fn expression(&mut self) -> Result<Box<Expr>, String> {
         self.assignment()
     }
@@ -91,7 +108,7 @@ impl Parser {
             let value = self.assignment()?;
             return match *expr {
                 // Convert the r-value expression node into an l-value representation.
-                Variable { name } => Ok(Box::from(Assign { name, value })),
+                Variable { name } => Ok(Box::new(Assign { name, value })),
                 _ => {
                     // Error if lhs is an invalid assignment target
                     // Report error but do not throw it
@@ -108,7 +125,7 @@ impl Parser {
         while self.match_token(&[BANG_EQUAL, EQUAL_EQUAL]) {
             let operator = self.previous();
             let right = self.comparison()?;
-            left = Box::from(Binary {
+            left = Box::new(Binary {
                 left,
                 operator,
                 right,
@@ -158,7 +175,7 @@ impl Parser {
         while self.match_token(&[GREATER, GREATER_EQUAL, LESS, LESS_EQUAL]) {
             let operator = self.previous();
             let right = self.term()?;
-            left = Box::from(Binary {
+            left = Box::new(Binary {
                 left,
                 operator,
                 right,
@@ -172,7 +189,7 @@ impl Parser {
         while self.match_token(&[MINUS, PLUS]) {
             let operator = self.previous();
             let right = self.factor()?;
-            left = Box::from(Binary {
+            left = Box::new(Binary {
                 left,
                 operator,
                 right,
@@ -186,7 +203,7 @@ impl Parser {
         while self.match_token(&[SLASH, STAR]) {
             let operator = self.previous();
             let right = self.unary()?;
-            left = Box::from(Binary {
+            left = Box::new(Binary {
                 left,
                 operator,
                 right,
@@ -199,7 +216,7 @@ impl Parser {
         if self.match_token(&[BANG, MINUS]) {
             let operator = self.previous();
             return match self.unary() {
-                Ok(right) => Ok(Box::from(Unary { operator, right })),
+                Ok(right) => Ok(Box::new(Unary { operator, right })),
                 Err(msg) => Err(msg),
             };
         }
@@ -212,26 +229,31 @@ impl Parser {
                 value: self.previous().literal,
             }));
         }
+
         if self.match_token(&[TRUE]) {
             return Ok(Box::new(Literal {
                 value: LOX_BOOL(true),
             }));
         }
+
         if self.match_token(&[FALSE]) {
             return Ok(Box::new(Literal {
                 value: LOX_BOOL(false),
             }));
         }
+
         if self.match_token(&[IDENTIFIER]) {
             return Ok(Box::new(Variable {
                 name: self.previous()
             }));
         }
+
         if self.match_token(&[LEFT_PAREN]) {
             let expr = self.expression()?;
             self.consume(RIGHT_PAREN, "Expect ')' after expression.")?;
             return Ok(Box::new(Grouping { expression: expr }));
         }
+
         lox::token_error(self.peek(), "Expect expression.");
         Err(String::from("Expect expression."))
     }
@@ -245,6 +267,7 @@ impl Parser {
         Err(String::from(message))
     }
 
+    // Recover when parser panics to move to the beginning of the next declaration
     fn synchronize(&mut self) {
         self.advance();
         while !self.is_at_end() {

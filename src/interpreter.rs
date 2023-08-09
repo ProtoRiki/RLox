@@ -59,11 +59,12 @@ impl Interpreter {
     fn accept_statement(&mut self, stmt: Stmt) -> Result<(), InterpreterError> {
         match stmt {
             Block { statements } => self.visit_block_stmt(Block { statements }),
-            Expression { expression } => {
-                self.visit_expression_stmt(Expression { expression })
-            },
+            Expression { expression } => self.visit_expression_stmt(Expression { expression }),
             Print { expression } => self.visit_print_stmt(Print { expression }),
             Var { name, initializer } => self.visit_var_stmt(Var { name, initializer }),
+            If { expression, then_branch, else_branch} => {
+                self.visit_if_stmt(If { expression, then_branch, else_branch})
+            }
         }
     }
 
@@ -130,6 +131,22 @@ impl Interpreter {
             }
             _ => {
                 let msg = String::from("Non-var statement passed to var visitor");
+                Err(InterpreterError::LiteralError(msg))
+            }
+        }
+    }
+
+    fn visit_if_stmt(&mut self, stmt: Stmt) -> Result<(), InterpreterError> {
+        match stmt {
+            If { expression, then_branch, else_branch} => {
+                match Interpreter::is_truthy(self.accept_expr(*expression)?) {
+                    true => self.accept_statement(*then_branch)?,
+                    false => self.accept_statement(*else_branch)?,
+                }
+                Ok(())
+            }
+            _ => {
+                let msg = String::from("Non-if statement passed to if visitor");
                 Err(InterpreterError::LiteralError(msg))
             }
         }

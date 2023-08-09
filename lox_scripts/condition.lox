@@ -1,0 +1,14 @@
+var a = 5;
+var b = 20;
+if (a > 0) {
+    print "a is greater than 0";
+}
+if (b > 30) {
+    print "b is greater than 30";
+}
+if (a > b) {
+    print "a is greater than b";
+}
+else {
+    print "b is greater than or equal to a";
+}

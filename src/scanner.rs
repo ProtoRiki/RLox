@@ -39,7 +39,6 @@ impl Scanner {
     /// None gets the current char
     /// Otherwise, use the passed index
     fn get_source_char(&self, index: Option<usize>) -> u8 {
-        if self.is_at_end() { return b'\0' }
         match index {
             None => self.source.as_bytes()[self.current as usize],
             Some(i) => {
