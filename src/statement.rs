@@ -24,4 +24,9 @@ pub enum Stmt {
         name: Token,
         initializer: Box<Expr>,
     },
+
+    While {
+        expression: Box<Expr>,
+        body: Box<Stmt>,
+    },
 }

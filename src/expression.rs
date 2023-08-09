@@ -7,6 +7,7 @@ pub enum Expr {
         name: Token,
         value: Box<Expr>
     },
+
     Binary {
         left: Box<Expr>,
         operator: Token,
@@ -19,6 +20,12 @@ pub enum Expr {
 
     Literal {
         value: TokenLiteral,
+    },
+
+    Logical {
+        left: Box<Expr>,
+        operator: Token,
+        right: Box<Expr>,
     },
 
     Unary {

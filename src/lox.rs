@@ -87,8 +87,8 @@ pub fn token_error(token: &Token, message: &str) {
 pub fn runtime_error(error: &InterpreterError) {
     match error {
         InterpreterError::LiteralError(msg) => eprintln!("Runtime Error {}", msg),
-        InterpreterError::OperatorError { operator, msg } => {
-            eprintln!("[line {}] Runtime Error {}", operator.line, msg);
+        InterpreterError::OperatorError { line, msg } => {
+            eprintln!("[line {}] Runtime Error {}", line, msg);
         }
     }
     unsafe { HAD_RUNTIME_ERROR = true }
@@ -96,6 +96,6 @@ pub fn runtime_error(error: &InterpreterError) {
 }
 
 pub fn report(line: i32, loc: &str, message: &str) {
-    eprintln!("[line {line}] Lexing Error {loc}: {message}");
+    eprintln!("[line {line}] Syntax Error {loc}: {message}");
     unsafe { HAD_ERROR = true; }
 }

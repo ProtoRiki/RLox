@@ -3,7 +3,6 @@ use std::mem;
 use crate::expression::Expr::{self, *};
 use crate::lox;
 use crate::statement::Stmt::{self, *};
-use crate::token::Token;
 use crate::token_literal::TokenLiteral;
 use crate::token_type::TokenType::*;
 use crate::environment::Environment;
@@ -14,7 +13,7 @@ pub struct Interpreter {
 
 pub enum InterpreterError {
     LiteralError(String),
-    OperatorError { operator: Token, msg: String },
+    OperatorError { line: i32, msg: String },
 }
 
 impl Interpreter {
@@ -22,7 +21,7 @@ impl Interpreter {
         Self { env: Box::new(Environment::new(None)) }
     }
     pub fn interpret(&mut self, statements: Vec<Stmt>) {
-        for statement in statements.into_iter() {
+        for statement in statements.iter() {
             if let Err(error) = self.accept_statement(statement) {
                 lox::runtime_error(&error);
                 return;
@@ -30,46 +29,31 @@ impl Interpreter {
         }
     }
 
-    fn accept_expr(&mut self, expr: Expr) -> Result<TokenLiteral, InterpreterError> {
+    fn accept_expr(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
         match expr {
-            Assign { name, value } => {
-                self.visit_assign_expr(Assign {
-                    name,
-                    value,
-                })
-            }
-            Binary { left, operator, right} => {
-                self.visit_binary_expr(Binary {
-                    left,
-                    operator,
-                    right,
-                })
-            },
-
-            Grouping { expression } => self.visit_grouping_expr(Grouping { expression }),
-
-            Literal { value } => self.visit_literal_expr(Literal { value }),
-
-            Unary { operator, right } => self.visit_unary_expr(Unary { operator, right }),
-
-            Variable { name } => self.visit_variable_expr(Variable { name }),
+            Assign { .. } => self.visit_assign_expr(expr),
+            Binary { .. } => self.visit_binary_expr(expr),
+            Grouping { .. } => self.visit_grouping_expr(expr),
+            Literal { .. } => self.visit_literal_expr(expr),
+            Logical { .. } => self.visit_logical_expr(expr),
+            Unary { .. } => self.visit_unary_expr(expr),
+            Variable { .. } => self.visit_variable_expr(expr),
         }
     }
 
-    fn accept_statement(&mut self, stmt: Stmt) -> Result<(), InterpreterError> {
+    fn accept_statement(&mut self, stmt: &Stmt) -> Result<(), InterpreterError> {
         match stmt {
-            Block { statements } => self.visit_block_stmt(Block { statements }),
-            Expression { expression } => self.visit_expression_stmt(Expression { expression }),
-            Print { expression } => self.visit_print_stmt(Print { expression }),
-            Var { name, initializer } => self.visit_var_stmt(Var { name, initializer }),
-            If { expression, then_branch, else_branch} => {
-                self.visit_if_stmt(If { expression, then_branch, else_branch})
-            }
+            Block { .. } => self.visit_block_stmt(stmt),
+            Expression { .. } => self.visit_expression_stmt(stmt),
+            Print { .. } => self.visit_print_stmt(stmt),
+            Var { .. } => self.visit_var_stmt(stmt),
+            If { .. } => self.visit_if_stmt(stmt),
+            While { .. } => self.visit_while_stmt(stmt),
         }
     }
 
 
-    fn visit_block_stmt(&mut self, stmt: Stmt) -> Result<(), InterpreterError> {
+    fn visit_block_stmt(&mut self, stmt: &Stmt) -> Result<(), InterpreterError> {
         match stmt {
             Block { statements } => {
                 self.execute_block(statements)?;
@@ -81,11 +65,11 @@ impl Interpreter {
         }
         Ok(())
     }
-    fn execute_block(&mut self, statements: Vec<Stmt>) -> Result<(), InterpreterError> {
+    fn execute_block(&mut self, statements: &[Stmt]) -> Result<(), InterpreterError> {
         // I had an aneurysm writing this function jesus christ
         let enclosing = mem::take(&mut self.env);
         self.env = Box::from(Environment::new(Some(enclosing)));
-        for statement in statements.into_iter() {
+        for statement in statements.iter() {
             if let Err(error) = self.accept_statement(statement) {
                 let current = mem::take(&mut self.env.enclosing);
                 self.env = current.unwrap();
@@ -98,9 +82,9 @@ impl Interpreter {
         // Not ok
     }
 
-    fn visit_expression_stmt(&mut self, stmt: Stmt) -> Result<(), InterpreterError> {
+    fn visit_expression_stmt(&mut self, stmt: &Stmt) -> Result<(), InterpreterError> {
         match stmt {
-            Expression { expression } => self.accept_expr(*expression)?,
+            Expression { expression } => self.accept_expr(expression)?,
             _ => {
                 let msg = String::from("Non-expression statement passed to expr visitor");
                 return Err(InterpreterError::LiteralError(msg));
@@ -109,10 +93,10 @@ impl Interpreter {
         Ok(())
     }
 
-    fn visit_print_stmt(&mut self, stmt: Stmt) -> Result<(), InterpreterError> {
+    fn visit_print_stmt(&mut self, stmt: &Stmt) -> Result<(), InterpreterError> {
         match stmt {
             Print { expression } => {
-                let value = self.accept_expr(*expression)?;
+                let value = self.accept_expr(expression)?;
                 Ok(println!("{}", value))
             }
             _ => {
@@ -122,11 +106,11 @@ impl Interpreter {
         }
     }
 
-    fn visit_var_stmt(&mut self, stmt: Stmt) -> Result<(), InterpreterError> {
+    fn visit_var_stmt(&mut self, stmt: &Stmt) -> Result<(), InterpreterError> {
         match stmt {
             Var { name, initializer } => {
-                let value = self.accept_expr(*initializer)?;
-                self.env.define(name.lexeme, value);
+                let value = self.accept_expr(initializer)?;
+                self.env.define(name.lexeme.clone(), value);
                 Ok(())
             }
             _ => {
@@ -136,12 +120,12 @@ impl Interpreter {
         }
     }
 
-    fn visit_if_stmt(&mut self, stmt: Stmt) -> Result<(), InterpreterError> {
+    fn visit_if_stmt(&mut self, stmt: &Stmt) -> Result<(), InterpreterError> {
         match stmt {
             If { expression, then_branch, else_branch} => {
-                match Interpreter::is_truthy(self.accept_expr(*expression)?) {
-                    true => self.accept_statement(*then_branch)?,
-                    false => self.accept_statement(*else_branch)?,
+                match Interpreter::is_truthy(&self.accept_expr(expression)?) {
+                    true => self.accept_statement(then_branch)?,
+                    false => self.accept_statement(else_branch)?,
                 }
                 Ok(())
             }
@@ -152,24 +136,57 @@ impl Interpreter {
         }
     }
 
-    fn visit_literal_expr(&mut self, expr: Expr) -> Result<TokenLiteral, InterpreterError> {
-        match expr {
-            Literal { value } => Ok(value),
-            _ => Err(InterpreterError::LiteralError(String::from(
-                "Non-literal expression passed to literal visitor",
-            ))),
+    fn visit_while_stmt(&mut self, stmt: &Stmt) -> Result<(), InterpreterError> {
+        match stmt {
+            While { expression, body } => {
+                while Interpreter::is_truthy(&self.accept_expr(expression)?) {
+                    self.accept_statement(body)?;
+                }
+                Ok(())
+            }
+            _ => {
+                let msg = String::from("Non-while statement passed to while visitor");
+                Err(InterpreterError::LiteralError(msg))
+            }
         }
     }
 
-    fn visit_grouping_expr(&mut self, expr: Expr) -> Result<TokenLiteral, InterpreterError> {
+    fn visit_literal_expr(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
         match expr {
-            Grouping { expression } => self.accept_expr(*expression),
+            Literal { value } => Ok(value.clone()),
+            _ => {
+                let msg = String::from("Non-literal expression passed to literal visitor");
+                Err(InterpreterError::LiteralError(msg))
+            },
+        }
+    }
+
+    fn visit_logical_expr(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
+        match expr {
+            Logical { left, operator, right } => {
+                let left = self.accept_expr(left)?;
+                match (Interpreter::is_truthy(&left), operator.token_type) {
+                    // Short-circuit
+                    (true, OR) | (false, AND) => Ok(left),
+                    (_, _) => self.accept_expr(right)
+                }
+            },
+            _ => {
+                let msg = String::from("Non-logical expression passed to logical visitor");
+                Err(InterpreterError::LiteralError(msg))
+            },
+        }
+    }
+
+    fn visit_grouping_expr(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
+        match expr {
+            Grouping { expression } => self.accept_expr(expression),
             _ => Err(InterpreterError::LiteralError(String::from(
                 "Non-group expression passed to group visitor",
             ))),
         }
     }
-    fn visit_binary_expr(&mut self, expr: Expr) -> Result<TokenLiteral, InterpreterError> {
+    fn visit_binary_expr(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
         match expr {
             Binary {
                 left,
@@ -177,8 +194,8 @@ impl Interpreter {
                 right,
             } => {
                 // Recursively evaluate operands until they are usable literals
-                let left = self.accept_expr(*left)?;
-                let right = self.accept_expr(*right)?;
+                let left = self.accept_expr(left)?;
+                let right = self.accept_expr(right)?;
                 match (left, right) {
                     // Two numbers
                     (TokenLiteral::LOX_NUMBER(left), TokenLiteral::LOX_NUMBER(right)) => {
@@ -207,7 +224,7 @@ impl Interpreter {
                                 let msg = String::from(
                                     "Unrecognized operator passed between two numbers",
                                 );
-                                Err(InterpreterError::OperatorError { operator, msg })
+                                Err(InterpreterError::OperatorError { line: operator.line, msg })
                             }
                         }
                     }
@@ -229,7 +246,7 @@ impl Interpreter {
                                 let msg = String::from(
                                     "Non-concatenating operator passed between two strings",
                                 );
-                                Err(InterpreterError::OperatorError { operator, msg })
+                                Err(InterpreterError::OperatorError { line: operator.line, msg })
                             }
                         }
                     }
@@ -249,7 +266,7 @@ impl Interpreter {
                             _ => {
                                 let msg =
                                     String::from("Non-equality operators passed between two bools");
-                                Err(InterpreterError::OperatorError { operator, msg })
+                                Err(InterpreterError::OperatorError { line: operator.line, msg })
                             }
                         }
                     }
@@ -266,7 +283,7 @@ impl Interpreter {
                         _ => {
                             let msg =
                                 String::from("Non-equality operators passed between two nils");
-                            Err(InterpreterError::OperatorError { operator, msg })
+                            Err(InterpreterError::OperatorError { line: operator.line, msg })
                         }
                     },
                     // Operands of arbitrary, non-equal types
@@ -275,7 +292,7 @@ impl Interpreter {
                         BANG_EQUAL => Ok(TokenLiteral::LOX_BOOL(true)),
                         _ => {
                             let msg = String::from("Mismatched types operated on");
-                            Err(InterpreterError::OperatorError { operator, msg })
+                            Err(InterpreterError::OperatorError { line: operator.line, msg })
                         }
                     },
                 }
@@ -286,19 +303,19 @@ impl Interpreter {
         }
     }
 
-    fn visit_unary_expr(&mut self, expr: Expr) -> Result<TokenLiteral, InterpreterError> {
+    fn visit_unary_expr(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
         match expr {
             Unary { operator, right } => {
-                let right = self.accept_expr(*right)?;
+                let right = self.accept_expr(right)?;
                 match operator.token_type {
                     MINUS => match right {
                         TokenLiteral::LOX_NUMBER(num) => Ok(TokenLiteral::LOX_NUMBER(-num)),
                         _ => {
                             let msg = String::from("Minus operator used on non-numerical operand");
-                            Err(InterpreterError::OperatorError { operator, msg })
+                            Err(InterpreterError::OperatorError { line: operator.line, msg })
                         }
                     },
-                    BANG => Ok(TokenLiteral::LOX_BOOL(!Interpreter::is_truthy(right))),
+                    BANG => Ok(TokenLiteral::LOX_BOOL(!Interpreter::is_truthy(&right))),
                     _ => {
                         let msg = String::from("Unreachable, only two unary operators exist");
                         Err(InterpreterError::LiteralError(msg))
@@ -312,7 +329,7 @@ impl Interpreter {
         }
     }
 
-    fn visit_variable_expr(&mut self, expr: Expr) -> Result<TokenLiteral, InterpreterError> {
+    fn visit_variable_expr(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
         match expr {
             Variable { name } => self.env.get(name),
             _ => {
@@ -322,10 +339,10 @@ impl Interpreter {
         }
     }
 
-    fn visit_assign_expr(&mut self, expr: Expr) -> Result<TokenLiteral, InterpreterError> {
+    fn visit_assign_expr(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
         match expr {
             Assign { name, value } => {
-                let value = self.accept_expr(*value)?;
+                let value = self.accept_expr(value)?;
                 self.env.assign(name, value.clone())?;
                 Ok(value)
             }
@@ -336,10 +353,10 @@ impl Interpreter {
         }
     }
 
-    fn is_truthy(literal: TokenLiteral) -> bool {
+    fn is_truthy(literal: &TokenLiteral) -> bool {
         // false and nil are falsy, and everything else is truthy
         match literal {
-            TokenLiteral::LOX_BOOL(bool_value) => bool_value,
+            TokenLiteral::LOX_BOOL(bool_value) => *bool_value,
             TokenLiteral::NULL => false,
             _ => true,
         }

@@ -3,7 +3,7 @@ use std::mem;
 use crate::expression::Expr::{self, *};
 use crate::lox;
 use crate::statement::Stmt;
-use crate::statement::Stmt::Var;
+use crate::statement::Stmt::{Block, Var, While};
 use crate::token::Token;
 use crate::token_literal::TokenLiteral::{LOX_BOOL, NULL};
 use crate::token_type::TokenType::{self, *};
@@ -58,6 +58,14 @@ impl Parser {
             return self.if_statement();
         }
 
+        if self.match_token(&[WHILE]) {
+            return self.while_statement();
+        }
+
+        if self.match_token(&[FOR]) {
+            return self.for_statement();
+        }
+
         self.expression_statement()
     }
 
@@ -75,7 +83,7 @@ impl Parser {
 
     fn block_statement(&mut self) -> Result<Vec<Stmt>, String> {
         let mut statements = Vec::new();
-        while !self.check(&RIGHT_BRACE) && !self.is_at_end() {
+        while !self.check(RIGHT_BRACE) && !self.is_at_end() {
             let declaration = self.declaration()?;
             statements.push(declaration)
         }
@@ -96,12 +104,73 @@ impl Parser {
         Ok(Stmt::If {expression: condition, then_branch, else_branch})
     }
 
+    fn while_statement(&mut self) -> Result<Stmt, String> {
+        self.consume(LEFT_PAREN, "Expect '(' after 'while'")?;
+        let condition = self.expression()?;
+        self.consume(RIGHT_PAREN, "Expect ')' after while-condition")?;
+        let body = Box::new(self.statement()?);
+        Ok(Stmt::While {expression: condition, body})
+    }
+
+    fn for_statement(&mut self) -> Result<Stmt, String> {
+        self.consume(LEFT_PAREN, "Expect '(' after 'for'")?;
+        // ; -> initializer omitted
+        // var -> initializer included
+        // no var -> no initialization, must be expression
+        let (initializer, had_initializer) = match (self.match_token(&[SEMICOLON]), self.match_token(&[VAR])) {
+            (true, _) => (Stmt::Expression { expression: Box::new(Literal { value: NULL })}, false),
+            (false, true) => (self.var_declaration()?, true),
+            (false, false) => (self.expression_statement()?, true),
+        };
+
+        let condition = if !self.check(SEMICOLON) {
+            self.expression()?
+        } else {
+            Box::new(Literal { value: LOX_BOOL(true) })
+        };
+        self.consume(SEMICOLON, "Expect ';' after loop condition")?;
+
+        let (increment, had_increment) = if !self.check(RIGHT_PAREN) {
+            (self.expression()?, true)
+        } else {
+            (Box::new(Literal { value: NULL }), false)
+        };
+        self.consume(RIGHT_PAREN, "Expect ')' after for clause")?;
+
+        let body = self.statement()?;
+
+        // Desugar for-loop into while-loop
+
+        let mut statements = Vec::new();
+
+        if had_initializer {
+            statements.push(initializer);
+        }
+
+        let mut body = match body {
+            Block { statements } => statements,
+            _ => vec![body]
+        };
+
+        if had_increment {
+            body.push(Stmt::Expression {expression: increment});
+        }
+
+        let body = Box::new(Block { statements: body});
+        if statements.is_empty() {
+            Ok(While { expression: condition, body})
+        } else {
+            statements.push(While { expression: condition, body});
+            Ok(Block {statements})
+        }
+    }
+
     fn expression(&mut self) -> Result<Box<Expr>, String> {
         self.assignment()
     }
 
     fn assignment(&mut self) -> Result<Box<Expr>, String> {
-        let expr = self.equality()?;
+        let expr = self.or()?;
         if self.match_token(&[EQUAL]) {
             let equals = self.previous();
             // Assignment is right-associative, recursively call assignment to parse rhs
@@ -116,6 +185,26 @@ impl Parser {
                     Ok(expr)
                 }
             }
+        }
+        Ok(expr)
+    }
+
+    fn or(&mut self) -> Result<Box<Expr>, String> {
+        let mut expr = self.and()?;
+        while self.match_token(&[OR]) {
+            let operator = self.previous();
+            let right = self.and()?;
+            expr = Box::new(Logical { left: expr, operator, right });
+        }
+        Ok(expr)
+    }
+
+    fn and(&mut self) -> Result<Box<Expr>, String> {
+        let mut expr = self.equality()?;
+        while self.match_token(&[AND]) {
+            let operator = self.previous();
+            let right = self.equality()?;
+            expr = Box::new(Logical {left: expr, operator, right });
         }
         Ok(expr)
     }
@@ -136,7 +225,7 @@ impl Parser {
 
     fn match_token(&mut self, types: &[TokenType]) -> bool {
         for token_type in types.iter() {
-            if self.check(token_type) {
+            if self.check(*token_type) {
                 self.advance();
                 return true;
             }
@@ -144,11 +233,11 @@ impl Parser {
         false
     }
 
-    fn check(&self, token_type: &TokenType) -> bool {
+    fn check(&self, token_type: TokenType) -> bool {
         if self.is_at_end() {
             return false;
         }
-        self.peek().token_type == *token_type
+        self.peek().token_type == token_type
     }
 
     fn advance(&mut self) {
@@ -225,27 +314,23 @@ impl Parser {
 
     fn primary(&mut self) -> Result<Box<Expr>, String> {
         if self.match_token(&[NUMBER, STRING]) {
-            return Ok(Box::new(Literal {
-                value: self.previous().literal,
-            }));
+            return Ok(Box::new(Literal { value: self.previous().literal }));
         }
 
         if self.match_token(&[TRUE]) {
-            return Ok(Box::new(Literal {
-                value: LOX_BOOL(true),
-            }));
+            return Ok(Box::new(Literal { value: LOX_BOOL(true) }));
         }
 
         if self.match_token(&[FALSE]) {
-            return Ok(Box::new(Literal {
-                value: LOX_BOOL(false),
-            }));
+            return Ok(Box::new(Literal { value: LOX_BOOL(false) }));
+        }
+
+        if self.match_token(&[NIL]) {
+            return Ok(Box::new(Literal { value: NULL }));
         }
 
         if self.match_token(&[IDENTIFIER]) {
-            return Ok(Box::new(Variable {
-                name: self.previous()
-            }));
+            return Ok(Box::new(Variable { name: self.previous() }));
         }
 
         if self.match_token(&[LEFT_PAREN]) {
@@ -259,7 +344,7 @@ impl Parser {
     }
 
     fn consume(&mut self, token_type: TokenType, message: &str) -> Result<Token, String> {
-        if self.check(&token_type) {
+        if self.check(token_type) {
             self.advance();
             return Ok(self.previous());
         }

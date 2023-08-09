@@ -9,7 +9,7 @@ pub struct Environment {
     pub enclosing: Option<Box<Environment>>,
 }
 
-impl Environment {
+impl <'a> Environment {
     pub fn new (enclosing: Option<Box<Environment>>) -> Self {
         Self { values: HashMap::new(), enclosing }
     }
@@ -18,7 +18,7 @@ impl Environment {
         self.values.insert(name, value);
     }
 
-    pub fn get(&mut self, name: Token) -> Result<TokenLiteral, InterpreterError> {
+    pub fn get(&mut self, name: &Token) -> Result<TokenLiteral, InterpreterError> {
         match self.values.get(&name.lexeme) {
             Some(val) => Ok(val.clone()),
             None => {
@@ -26,14 +26,14 @@ impl Environment {
                     Some(enclosing) => enclosing.get(name),
                     None => {
                         let msg = format!("Undefined variable '{}'", &name.lexeme);
-                        Err(InterpreterError::OperatorError { operator: name, msg})
+                        Err(InterpreterError::OperatorError { line: name.line, msg})
                     }
                 }
             }
         }
     }
 
-    pub fn assign(&mut self, name: Token, value: TokenLiteral) -> Result<(), InterpreterError> {
+    pub fn assign(&mut self, name: &Token, value: TokenLiteral) -> Result<(), InterpreterError> {
         match self.values.get_mut(&name.lexeme) {
             Some(val) => {
                 *val = value;
@@ -44,7 +44,7 @@ impl Environment {
                     Some(enclosing) => enclosing.assign(name, value),
                     None => {
                         let msg = format!("Undefined variable '{}'.", &name.lexeme);
-                        Err(InterpreterError::OperatorError{operator: name, msg})
+                        Err(InterpreterError::OperatorError{line: name.line, msg})
                     }
                 }
             }
