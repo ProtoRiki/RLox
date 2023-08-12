@@ -16,8 +16,7 @@ pub struct Interpreter {
 }
 
 pub enum InterpreterError {
-    LiteralError(String),
-    OperatorError { line: i32, msg: String },
+    OperatorError { line: i32, err_msg: String },
 }
 
 impl Interpreter {
@@ -68,11 +67,8 @@ impl Interpreter {
             Block { statements } => {
                 let env = Rc::new(RefCell::new(Environment::new(Some(Rc::clone(&self.env)))));
                 self.execute_block(statements, env)?;
-            },
-            _ => {
-                let msg = String::from("Non-block statement passed to block visitor");
-                return Err(InterpreterError::LiteralError(msg));
             }
+            _ => unreachable!("Non-block statement passed to block visitor")
         }
         Ok(TokenLiteral::NULL)
     }
@@ -81,8 +77,8 @@ impl Interpreter {
         for statement in statements.iter() {
             match self.accept_statement(statement) {
                 Ok(literal) => match literal {
-                    // Exit block early on reaching return
                     TokenLiteral::NULL => (),
+                    // Exit block early on reaching return
                     _ => {
                         self.env = previous;
                         return Ok(literal);
@@ -103,11 +99,8 @@ impl Interpreter {
             Expression { expression } => {
                 self.accept_expr(expression)?;
                 Ok(TokenLiteral::NULL)
-            },
-            _ => {
-                let msg = String::from("Non-expression statement passed to expr visitor");
-                Err(InterpreterError::LiteralError(msg))
             }
+            _ => unreachable!("Non-expression statement passed to expr visitor")
         }
     }
 
@@ -118,10 +111,7 @@ impl Interpreter {
                 println!("{}", value);
                 Ok(TokenLiteral::NULL)
             }
-            _ => {
-                let msg = String::from("Non-print statement passed to print visitor");
-                Err(InterpreterError::LiteralError(msg))
-            }
+            _ => unreachable!("Non-print statement passed to print visitor")
         }
     }
 
@@ -132,10 +122,7 @@ impl Interpreter {
                 self.env.borrow_mut().define(name.lexeme.clone(), value);
                 Ok(TokenLiteral::NULL)
             }
-            _ => {
-                let msg = String::from("Non-var statement passed to var visitor");
-                Err(InterpreterError::LiteralError(msg))
-            }
+            _ => unreachable!("Non-var statement passed to var visitor")
         }
     }
 
@@ -147,10 +134,7 @@ impl Interpreter {
                     false => self.accept_statement(else_branch),
                 }
             }
-            _ => {
-                let msg = String::from("Non-if statement passed to if visitor");
-                Err(InterpreterError::LiteralError(msg))
-            }
+            _ => unreachable!("Non-if statement passed to if visitor")
         }
     }
 
@@ -162,10 +146,7 @@ impl Interpreter {
                 }
                 Ok(TokenLiteral::NULL)
             }
-            _ => {
-                let msg = String::from("Non-while statement passed to while visitor");
-                Err(InterpreterError::LiteralError(msg))
-            }
+            _ => unreachable!("Non-while statement passed to while visitor")
         }
     }
 
@@ -178,33 +159,24 @@ impl Interpreter {
                 self.env.borrow_mut().define(ptr.as_ref().name.lexeme.clone(), TokenLiteral::LOX_CALLABLE(function));
                 Ok(TokenLiteral::NULL)
             }
-            _ => {
-                let msg= String::from("Non-function statement passed to function visitor");
-                Err(InterpreterError::LiteralError(msg))
-            }
+            _ => unreachable!("Non-function statement passed to function visitor")
         }
     }
 
     fn visit_return_stmt(&mut self, stmt: &Stmt) -> Result<TokenLiteral, InterpreterError> {
         match stmt {
-            Return { keyword: _keyword, value } => {
+            Return { value, .. } => {
                 let value = self.accept_expr(value)?;
                 Ok(value)
             }
-            _ => {
-                let msg = String::from("Non-return statement passed to return visitor");
-                Err(InterpreterError::LiteralError(msg))
-            }
+            _ => unreachable!("Non-return statement passed to return visitor")
         }
     }
 
     fn visit_literal_expr(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
         match expr {
             Literal { value } => Ok(value.clone()),
-            _ => {
-                let msg = String::from("Non-literal expression passed to literal visitor");
-                Err(InterpreterError::LiteralError(msg))
-            },
+            _ => unreachable!("Non-literal expression passed to literal visitor")
         }
     }
 
@@ -217,30 +189,21 @@ impl Interpreter {
                     (true, OR) | (false, AND) => Ok(left),
                     (_, _) => self.accept_expr(right)
                 }
-            },
-            _ => {
-                let msg = String::from("Non-logical expression passed to logical visitor");
-                Err(InterpreterError::LiteralError(msg))
-            },
+            }
+            _ => unreachable!("Non-logical expression passed to logical visitor")
         }
     }
 
     fn visit_grouping_expr(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
         match expr {
             Grouping { expression } => self.accept_expr(expression),
-            _ => {
-                let msg = String::from("Non-group expression passed to group visitor");
-                Err(InterpreterError::LiteralError(msg))
-            } 
+            _ => unreachable!("Non-group expression passed to group visitor")
         }
     }
+
     fn visit_binary_expr(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
         match expr {
-            Binary {
-                left,
-                operator,
-                right,
-            } => {
+            Binary { left, operator, right, } => {
                 // Recursively evaluate operands until they are usable literals
                 let left = self.accept_expr(left)?;
                 let right = self.accept_expr(right)?;
@@ -269,10 +232,10 @@ impl Interpreter {
                             LESS => Ok(TokenLiteral::LOX_BOOL(left < right)),
                             LESS_EQUAL => Ok(TokenLiteral::LOX_BOOL(left <= right)),
                             _ => {
-                                let msg = String::from(
+                                let err_msg = String::from(
                                     "Unrecognized operator passed between two numbers",
                                 );
-                                Err(InterpreterError::OperatorError { line: operator.line, msg })
+                                Err(InterpreterError::OperatorError { line: operator.line, err_msg })
                             }
                         }
                     }
@@ -291,10 +254,10 @@ impl Interpreter {
                                 Ok(TokenLiteral::LOX_BOOL(!Interpreter::is_equal(left, right)))
                             }
                             _ => {
-                                let msg = String::from(
+                                let err_msg = String::from(
                                     "Non-concatenating operator passed between two strings",
                                 );
-                                Err(InterpreterError::OperatorError { line: operator.line, msg })
+                                Err(InterpreterError::OperatorError { line: operator.line, err_msg })
                             }
                         }
                     }
@@ -312,9 +275,9 @@ impl Interpreter {
                                 Ok(TokenLiteral::LOX_BOOL(!Interpreter::is_equal(left, right)))
                             }
                             _ => {
-                                let msg =
+                                let err_msg =
                                     String::from("Non-equality operators passed between two bools");
-                                Err(InterpreterError::OperatorError { line: operator.line, msg })
+                                Err(InterpreterError::OperatorError { line: operator.line, err_msg })
                             }
                         }
                     }
@@ -329,9 +292,9 @@ impl Interpreter {
                             TokenLiteral::NULL,
                         ))),
                         _ => {
-                            let msg =
+                            let err_msg =
                                 String::from("Non-equality operators passed between two nils");
-                            Err(InterpreterError::OperatorError { line: operator.line, msg })
+                            Err(InterpreterError::OperatorError { line: operator.line, err_msg })
                         }
                     },
                     // Operands of arbitrary, non-equal types
@@ -339,23 +302,19 @@ impl Interpreter {
                         EQUAL_EQUAL => Ok(TokenLiteral::LOX_BOOL(false)),
                         BANG_EQUAL => Ok(TokenLiteral::LOX_BOOL(true)),
                         _ => {
-                            let msg = String::from("Mismatched types operated on");
-                            Err(InterpreterError::OperatorError { line: operator.line, msg })
+                            let err_msg = String::from("Mismatched types operated on");
+                            Err(InterpreterError::OperatorError { line: operator.line, err_msg })
                         }
                     },
                 }
             }
-            _ => {
-                let msg = String::from("Non-binary expression passed to binary visitor");
-                Err(InterpreterError::LiteralError(msg))
-            },
+            _ => unreachable!("Non-binary expression passed to binary visitor")
         }
     }
 
     fn visit_call_expr(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
         match expr {
             Call { callee, paren, arguments } => {
-
                 let callee = self.accept_expr(callee)?;
                 let mut parameters = Vec::with_capacity(arguments.len());
                 for arg in arguments.iter() {
@@ -367,21 +326,18 @@ impl Interpreter {
                         match callable.arity() == parameters.len() {
                             true => callable.call(self, parameters),
                             false => {
-                                let msg = format!("Expected {} arguments but got {}.", callable.arity(), parameters.len());
-                                Err(InterpreterError::OperatorError { line: paren.line, msg})
+                                let err_msg = format!("Expected {} arguments but got {}.", callable.arity(), parameters.len());
+                                Err(InterpreterError::OperatorError { line: paren.line, err_msg})
                             }
                         }
                     }
                     _ => {
-                        let msg = String::from("Can only call functions and classes.");
-                        Err(InterpreterError::OperatorError { line: paren.line, msg})
+                        let err_msg = String::from("Can only call functions and class instances");
+                        Err(InterpreterError::OperatorError { line: paren.line, err_msg})
                     }
                 }
             }
-            _ => {
-                let msg = String::from("Non-call expression passed to call visitor");
-                Err(InterpreterError::LiteralError(msg))
-            }
+            _ => unreachable!("Non-call expression passed to call visitor")
         }
     }
 
@@ -393,31 +349,22 @@ impl Interpreter {
                     MINUS => match right {
                         TokenLiteral::LOX_NUMBER(num) => Ok(TokenLiteral::LOX_NUMBER(-num)),
                         _ => {
-                            let msg = String::from("Minus operator used on non-numerical operand");
-                            Err(InterpreterError::OperatorError { line: operator.line, msg })
+                            let err_msg = String::from("Minus operator used on non-numerical operand");
+                            Err(InterpreterError::OperatorError { line: operator.line, err_msg })
                         }
                     },
                     BANG => Ok(TokenLiteral::LOX_BOOL(!Interpreter::is_truthy(&right))),
-                    _ => {
-                        let msg = String::from("Unreachable, only two unary operators exist");
-                        Err(InterpreterError::LiteralError(msg))
-                    },
+                    _ => unreachable!("Only two unary operators exist")
                 }
             }
-            _ => {
-                let msg = String::from("Non-unary expression passed to unary visitor");
-                Err(InterpreterError::LiteralError(msg))
-            },
+            _ => unreachable!("Non-unary expression passed to unary visitor")
         }
     }
 
     fn visit_variable_expr(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
         match expr {
             Variable { name } => self.env.borrow_mut().get(name),
-            _ => {
-                let msg = String::from("Non-variable expression passed to variable visitor");
-                Err(InterpreterError::LiteralError(msg))
-            }
+            _ => unreachable!("Non-variable expression passed to variable visitor")
         }
     }
 
@@ -428,15 +375,11 @@ impl Interpreter {
                 self.env.borrow_mut().assign(name, value.clone())?;
                 Ok(value)
             }
-            _ => {
-                let msg = String::from("Non-assignment expression passed to assignment visitor");
-                Err(InterpreterError::LiteralError(msg))
-            }
+            _ => unreachable!("Non-assignment expression passed to assignment visitor")
         }
     }
 
     fn is_truthy(literal: &TokenLiteral) -> bool {
-        // false and nil are falsy, and everything else is truthy
         match literal {
             TokenLiteral::LOX_BOOL(bool_value) => *bool_value,
             TokenLiteral::NULL => false,

@@ -221,7 +221,7 @@ impl Parser {
                 // Convert the r-value expression node into an l-value representation.
                 Variable { name } => Ok(Box::new(Assign { name, value })),
                 _ => {
-                    // Error if lhs is an invalid assignment target
+                    // Error if left-hand-side is an invalid assignment target
                     // Report error but do not throw it
                     lox::token_error(&equals, "Invalid assignment target.");
                     Ok(expr)
@@ -256,11 +256,7 @@ impl Parser {
         while self.match_token(&[BANG_EQUAL, EQUAL_EQUAL]) {
             let operator = self.take_previous();
             let right = self.comparison()?;
-            left = Box::new(Binary {
-                left,
-                operator,
-                right,
-            });
+            left = Box::new(Binary { left, operator, right, });
         }
         Ok(left)
     }
@@ -306,11 +302,7 @@ impl Parser {
         while self.match_token(&[GREATER, GREATER_EQUAL, LESS, LESS_EQUAL]) {
             let operator = self.take_previous();
             let right = self.term()?;
-            left = Box::new(Binary {
-                left,
-                operator,
-                right,
-            });
+            left = Box::new(Binary { left, operator, right, });
         }
         Ok(left)
     }
@@ -320,11 +312,7 @@ impl Parser {
         while self.match_token(&[MINUS, PLUS]) {
             let operator = self.take_previous();
             let right = self.factor()?;
-            left = Box::new(Binary {
-                left,
-                operator,
-                right,
-            })
+            left = Box::new(Binary { left, operator, right, })
         }
         Ok(left)
     }
@@ -334,11 +322,7 @@ impl Parser {
         while self.match_token(&[SLASH, STAR]) {
             let operator = self.take_previous();
             let right = self.unary()?;
-            left = Box::new(Binary {
-                left,
-                operator,
-                right,
-            });
+            left = Box::new(Binary { left, operator, right, });
         }
         Ok(left)
     }
@@ -409,8 +393,9 @@ impl Parser {
             return Ok(Box::new(Grouping { expression: expr }));
         }
 
-        lox::token_error(self.peek(), "Expect expression.");
-        Err(String::from("Expect expression."))
+        let err_msg = String::from("Expected expression");
+        lox::token_error(self.peek(), &err_msg);
+        Err(err_msg)
     }
 
     fn consume(&mut self, token_type: TokenType, message: &str) -> Result<Token, String> {
