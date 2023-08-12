@@ -9,7 +9,7 @@ pub enum TokenLiteral {
     LOX_BOOL(bool),
     LOX_CALLABLE(Rc<dyn LoxCallable>),
     LOX_NUMBER(f64),
-    LOX_STRING(String),
+    LOX_STRING(Rc<String>),
     NULL
 }
 

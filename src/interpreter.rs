@@ -242,7 +242,7 @@ impl Interpreter {
                     // Two strings
                     (TokenLiteral::LOX_STRING(left), TokenLiteral::LOX_STRING(right)) => {
                         match operator.token_type {
-                            PLUS => Ok(TokenLiteral::LOX_STRING(left + &right)),
+                            PLUS => Ok(TokenLiteral::LOX_STRING(Rc::new(format!("{left}{right}")))),
                             EQUAL_EQUAL => {
                                 let left = TokenLiteral::LOX_STRING(left);
                                 let right = TokenLiteral::LOX_STRING(right);

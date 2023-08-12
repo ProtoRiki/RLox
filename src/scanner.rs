@@ -1,5 +1,6 @@
 use std::mem;
 use std::str::{self, FromStr};
+use std::rc::Rc;
 
 use crate::lox;
 use crate::token::Token;
@@ -161,7 +162,7 @@ impl Scanner {
 
         // Strip quotes
         let value = String::from_utf8_lossy(&bytes[(self.start+1) as usize..(self.current-1) as usize]);
-        let value = value.into_owned();
+        let value = Rc::new(value.into_owned());
         self.add_token(STRING, LOX_STRING(value));
     }
 
