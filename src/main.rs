@@ -12,6 +12,7 @@ mod callable;
 mod function;
 mod clock;
 mod function_object;
+mod native;
 
 use std::env;
 use std::cmp::Ordering;

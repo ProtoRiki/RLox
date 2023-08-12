@@ -1,6 +1,7 @@
 use std::mem;
 use std::rc::Rc;
 use std::cell::RefCell;
+use crate::callable::LoxCallable;
 
 use crate::environment::Environment;
 use crate::expression::Expr::{self, *};
@@ -153,9 +154,10 @@ impl Interpreter {
     fn visit_function_stmt(&mut self, stmt: &Stmt) -> Result<TokenLiteral, InterpreterError> {
         match stmt {
             Function { ptr } => {
-                let function_obj = Function { ptr: Rc::clone(ptr) };
                 let curr_env = self.env.clone();
-                let function = Rc::new(LoxFunction::new(function_obj, curr_env));
+                let function_obj = Function { ptr: Rc::clone(ptr) };
+                let function_obj = LoxFunction::new(function_obj, curr_env);
+                let function = Rc::new(LoxCallable::UserFunction(function_obj));
                 self.env.borrow_mut().define(ptr.as_ref().name.lexeme.clone(), TokenLiteral::LOX_CALLABLE(function));
                 Ok(TokenLiteral::NULL)
             }

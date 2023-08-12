@@ -7,7 +7,7 @@ use crate::callable::LoxCallable;
 #[derive(Clone)]
 pub enum TokenLiteral {
     LOX_BOOL(bool),
-    LOX_CALLABLE(Rc<dyn LoxCallable>),
+    LOX_CALLABLE(Rc<LoxCallable>),
     LOX_NUMBER(f64),
     LOX_STRING(Rc<String>),
     NULL

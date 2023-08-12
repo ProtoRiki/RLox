@@ -1,9 +1,11 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use crate::callable::LoxCallable;
 
 use crate::clock::Clock;
 use crate::interpreter::InterpreterError;
+use crate::native::NativeFunction;
 use crate::token_literal::TokenLiteral;
 use crate::token::Token;
 
@@ -58,6 +60,6 @@ impl Environment {
     pub fn init_native_funcs(&mut self) {
         // Native functions are extensible via implementing the LoxCallable trait object on them
         // Clock
-        self.define(String::from("clock"), TokenLiteral::LOX_CALLABLE(Rc::new(Clock)));
+        self.define(String::from("clock"), TokenLiteral::LOX_CALLABLE(Rc::new(LoxCallable::Native(NativeFunction::CLOCK(Clock)))));
     }
 }

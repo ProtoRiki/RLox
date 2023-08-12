@@ -3,7 +3,6 @@ use std::fmt::{Display, Formatter};
 use std::iter::zip;
 use std::rc::Rc;
 
-use crate::callable::LoxCallable;
 use crate::environment::Environment;
 use crate::interpreter::{Interpreter, InterpreterError};
 use crate::statement::Stmt;
@@ -24,8 +23,8 @@ impl LoxFunction {
     }
 }
 
-impl LoxCallable for LoxFunction {
-    fn call(&self, interpreter: &mut Interpreter, arguments: Vec<TokenLiteral>) -> Result<TokenLiteral, InterpreterError> {
+impl LoxFunction {
+    pub fn call(&self, interpreter: &mut Interpreter, arguments: Vec<TokenLiteral>) -> Result<TokenLiteral, InterpreterError> {
         match &self.declaration {
             Stmt::Function { ptr } => {
                 let FunctionObject { params, body , .. } = ptr.as_ref();
@@ -39,7 +38,7 @@ impl LoxCallable for LoxFunction {
         }
     }
 
-    fn arity(&self) -> usize {
+    pub fn arity(&self) -> usize {
         match &self.declaration {
             Stmt::Function { ptr } => ptr.as_ref().params.len(),
             _ => unreachable!()
