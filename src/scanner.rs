@@ -95,7 +95,7 @@ impl Scanner {
                 match self.match_second(b'/') {
                     true => {
                         // Comment goes until end of line
-                        while self.get_source_char(None) != b'\n' && !self.is_at_end() {
+                        while !self.is_at_end() && self.get_source_char(None) != b'\n' {
                             self.advance();
                         }
                     }

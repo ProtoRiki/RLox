@@ -95,6 +95,10 @@ impl Parser {
             return self.for_statement();
         }
 
+        if self.match_token(&[RETURN]) {
+            return self.return_statement();
+        }
+
         self.expression_statement()
     }
 
@@ -192,6 +196,15 @@ impl Parser {
             statements.push(Stmt::While { expression: condition, body});
             Ok(Stmt::Block {statements})
         }
+    }
+
+    fn return_statement(&mut self) -> Result<Stmt, String> {
+        let keyword = self.take_previous();
+        let value = if !self.check(SEMICOLON) { self.expression()? } else {
+            Box::new(Literal { value: NULL })
+        };
+        self.consume(SEMICOLON, "Expect ';' after return value.")?;
+        Ok(Stmt::Return { keyword, value })
     }
 
     fn expression(&mut self) -> Result<Box<Expr>, String> {

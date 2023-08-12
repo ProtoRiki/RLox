@@ -1,0 +1,12 @@
+// Iterative
+for (var i = 0; i <= 10; i = i + 1) {
+    print i;
+}
+print "";
+// Recursive
+fun count(n) {
+    if (n > 0) count(n - 1);
+    print n;
+}
+
+count(10);

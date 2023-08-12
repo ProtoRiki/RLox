@@ -11,7 +11,7 @@ use crate::environment::Environment;
 use crate::function::LoxFunction;
 
 pub struct Interpreter {
-    env: Rc<RefCell<Environment>>,
+    pub env: Rc<RefCell<Environment>>,
     pub global: Rc<RefCell<Environment>>
 }
 
@@ -49,12 +49,13 @@ impl Interpreter {
         }
     }
 
-    fn accept_statement(&mut self, stmt: &Stmt) -> Result<(), InterpreterError> {
+    fn accept_statement(&mut self, stmt: &Stmt) -> Result<TokenLiteral, InterpreterError> {
         match stmt {
             Block { .. } => self.visit_block_stmt(stmt),
             Expression { .. } => self.visit_expression_stmt(stmt),
             Function { .. } => self.visit_function_stmt(stmt),
             Print { .. } => self.visit_print_stmt(stmt),
+            Return { .. } => self.visit_return_stmt(stmt),
             Var { .. } => self.visit_var_stmt(stmt),
             If { .. } => self.visit_if_stmt(stmt),
             While { .. } => self.visit_while_stmt(stmt),
@@ -62,7 +63,7 @@ impl Interpreter {
     }
 
 
-    fn visit_block_stmt(&mut self, stmt: &Stmt) -> Result<(), InterpreterError> {
+    fn visit_block_stmt(&mut self, stmt: &Stmt) -> Result<TokenLiteral, InterpreterError> {
         match stmt {
             Block { statements } => {
                 let env = Rc::new(RefCell::new(Environment::new(Some(Rc::clone(&self.env)))));
@@ -73,38 +74,49 @@ impl Interpreter {
                 return Err(InterpreterError::LiteralError(msg));
             }
         }
-        Ok(())
+        Ok(TokenLiteral::NULL)
     }
-    pub fn execute_block(&mut self, statements: &[Stmt], environment: Rc<RefCell<Environment>>) -> Result<(), InterpreterError> {
-        // I had an aneurysm writing this function jesus christ
+    pub fn execute_block(&mut self, statements: &[Stmt], environment: Rc<RefCell<Environment>>) -> Result<TokenLiteral, InterpreterError> {
         let previous = mem::replace(&mut self.env, environment);
         for statement in statements.iter() {
-            if let Err(error) = self.accept_statement(statement) {
-                self.env = previous;
-                return Err(error);
+            match self.accept_statement(statement) {
+                Ok(literal) => match literal {
+                    // Exit block early on reaching return
+                    TokenLiteral::NULL => (),
+                    _ => {
+                        self.env = previous;
+                        return Ok(literal);
+                    }
+                }
+                Err(error) => {
+                    self.env = previous;
+                    return Err(error);
+                }
             }
         }
         self.env = previous;
-        Ok(())
-        // Not ok
+        Ok(TokenLiteral::NULL)
     }
 
-    fn visit_expression_stmt(&mut self, stmt: &Stmt) -> Result<(), InterpreterError> {
+    fn visit_expression_stmt(&mut self, stmt: &Stmt) -> Result<TokenLiteral, InterpreterError> {
         match stmt {
-            Expression { expression } => self.accept_expr(expression)?,
+            Expression { expression } => {
+                self.accept_expr(expression)?;
+                Ok(TokenLiteral::NULL)
+            },
             _ => {
                 let msg = String::from("Non-expression statement passed to expr visitor");
-                return Err(InterpreterError::LiteralError(msg));
+                Err(InterpreterError::LiteralError(msg))
             }
-        };
-        Ok(())
+        }
     }
 
-    fn visit_print_stmt(&mut self, stmt: &Stmt) -> Result<(), InterpreterError> {
+    fn visit_print_stmt(&mut self, stmt: &Stmt) -> Result<TokenLiteral, InterpreterError> {
         match stmt {
             Print { expression } => {
                 let value = self.accept_expr(expression)?;
-                Ok(println!("{}", value))
+                println!("{}", value);
+                Ok(TokenLiteral::NULL)
             }
             _ => {
                 let msg = String::from("Non-print statement passed to print visitor");
@@ -113,12 +125,12 @@ impl Interpreter {
         }
     }
 
-    fn visit_var_stmt(&mut self, stmt: &Stmt) -> Result<(), InterpreterError> {
+    fn visit_var_stmt(&mut self, stmt: &Stmt) -> Result<TokenLiteral, InterpreterError> {
         match stmt {
             Var { name, initializer } => {
                 let value = self.accept_expr(initializer)?;
                 self.env.borrow_mut().define(name.lexeme.clone(), value);
-                Ok(())
+                Ok(TokenLiteral::NULL)
             }
             _ => {
                 let msg = String::from("Non-var statement passed to var visitor");
@@ -127,14 +139,13 @@ impl Interpreter {
         }
     }
 
-    fn visit_if_stmt(&mut self, stmt: &Stmt) -> Result<(), InterpreterError> {
+    fn visit_if_stmt(&mut self, stmt: &Stmt) -> Result<TokenLiteral, InterpreterError> {
         match stmt {
             If { expression, then_branch, else_branch} => {
                 match Interpreter::is_truthy(&self.accept_expr(expression)?) {
-                    true => self.accept_statement(then_branch)?,
-                    false => self.accept_statement(else_branch)?,
+                    true => self.accept_statement(then_branch),
+                    false => self.accept_statement(else_branch),
                 }
-                Ok(())
             }
             _ => {
                 let msg = String::from("Non-if statement passed to if visitor");
@@ -143,13 +154,13 @@ impl Interpreter {
         }
     }
 
-    fn visit_while_stmt(&mut self, stmt: &Stmt) -> Result<(), InterpreterError> {
+    fn visit_while_stmt(&mut self, stmt: &Stmt) -> Result<TokenLiteral, InterpreterError> {
         match stmt {
             While { expression, body } => {
                 while Interpreter::is_truthy(&self.accept_expr(expression)?) {
                     self.accept_statement(body)?;
                 }
-                Ok(())
+                Ok(TokenLiteral::NULL)
             }
             _ => {
                 let msg = String::from("Non-while statement passed to while visitor");
@@ -158,15 +169,30 @@ impl Interpreter {
         }
     }
 
-    fn visit_function_stmt(&mut self, stmt: &Stmt) -> Result<(), InterpreterError> {
+    fn visit_function_stmt(&mut self, stmt: &Stmt) -> Result<TokenLiteral, InterpreterError> {
         match stmt {
             Function { ptr } => {
-                let function = Rc::new(LoxFunction::new(Function { ptr: Rc::clone(ptr) }));
+                let function_obj = Function { ptr: Rc::clone(ptr) };
+                let curr_env = self.env.clone();
+                let function = Rc::new(LoxFunction::new(function_obj, curr_env));
                 self.env.borrow_mut().define(ptr.as_ref().name.lexeme.clone(), TokenLiteral::LOX_CALLABLE(function));
-                Ok(())
+                Ok(TokenLiteral::NULL)
             }
             _ => {
                 let msg= String::from("Non-function statement passed to function visitor");
+                Err(InterpreterError::LiteralError(msg))
+            }
+        }
+    }
+
+    fn visit_return_stmt(&mut self, stmt: &Stmt) -> Result<TokenLiteral, InterpreterError> {
+        match stmt {
+            Return { keyword: _keyword, value } => {
+                let value = self.accept_expr(value)?;
+                Ok(value)
+            }
+            _ => {
+                let msg = String::from("Non-return statement passed to return visitor");
                 Err(InterpreterError::LiteralError(msg))
             }
         }

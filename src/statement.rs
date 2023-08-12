@@ -25,6 +25,11 @@ pub enum Stmt {
         expression: Box<Expr>,
     },
 
+    Return {
+        keyword: Token,
+        value: Box<Expr>,
+    },
+
     Var {
         name: Token,
         initializer: Box<Expr>,

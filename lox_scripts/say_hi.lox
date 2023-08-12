@@ -2,4 +2,5 @@ fun sayHi(first, last) {
   print "Hi, " + first + " " + last + "!";
 }
 
-sayHi("Robert", "Nystrom");
+sayHi("Mr.", "Dad");
+sayHi("Mrs.", "Mom");

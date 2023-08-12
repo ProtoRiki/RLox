@@ -1,5 +1,5 @@
 use std::fmt::{Display, Formatter};
-use std::time::Instant;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::callable::LoxCallable;
 use crate::interpreter::{Interpreter, InterpreterError};
@@ -10,7 +10,7 @@ pub struct Clock;
 
 impl LoxCallable for Clock {
     fn call(&self, _interpreter: &mut Interpreter, _arguments: Vec<TokenLiteral>) -> Result<TokenLiteral, InterpreterError> {
-        Ok(LOX_NUMBER(Instant::now().elapsed().as_secs_f64()))
+        Ok(LOX_NUMBER(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64()))
     }
 
     fn arity(&self) -> usize {
