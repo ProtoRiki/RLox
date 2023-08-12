@@ -1,12 +1,14 @@
 use std::mem;
+use std::rc::Rc;
 
 use crate::expression::Expr::{self, *};
 use crate::lox;
-use crate::statement::Stmt;
-use crate::statement::Stmt::{Block, Var, While};
+use crate::statement::{Stmt, FunctionObject};
 use crate::token::Token;
 use crate::token_literal::TokenLiteral::{LOX_BOOL, NULL};
 use crate::token_type::TokenType::{self, *};
+
+const ARGUMENT_LIMIT: usize = 255;
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -28,10 +30,37 @@ impl Parser {
     }
 
     fn declaration(&mut self) -> Result<Stmt, String> {
+        if self.match_token(&[FUN]) {
+            return self.function_declaration(String::from("function"))
+        }
+
         if self.match_token(&[VAR]) {
             return self.var_declaration();
         }
         self.statement().map_err(|error| { self.synchronize(); error })
+    }
+
+    fn function_declaration(&mut self, function_type: String) -> Result<Stmt, String> {
+        let name = self.consume(IDENTIFIER, &format!("Expect {function_type} name"))?;
+        self.consume(LEFT_PAREN, &format!("Expect '(' after {function_type} name"))?;
+        let mut parameters = Vec::new();
+        if !self.check(RIGHT_PAREN) {
+            if parameters.len() >= ARGUMENT_LIMIT {
+                lox::error(self.peek().line, &format!("Can't have more than {ARGUMENT_LIMIT} parameters."));
+            }
+            parameters.push(self.consume(IDENTIFIER, "Expect parameter name.")?);
+
+            while self.match_token(&[COMMA]) {
+                if parameters.len() >= ARGUMENT_LIMIT {
+                    lox::error(self.peek().line, &format!("Can't have more than {ARGUMENT_LIMIT} parameters."));
+                }
+                parameters.push(self.consume(IDENTIFIER, "Expect parameter name.")?);
+            }
+        }
+        self.consume(RIGHT_PAREN, "Expect ')' after parameters.")?;
+        self.consume(LEFT_BRACE, &format!("Expect '{{' before {function_type} body"))?;
+        let body = self.block_statement()?;
+        Ok(Stmt::Function { ptr: Rc::new(FunctionObject {name, params: parameters, body })})
     }
 
     fn var_declaration(&mut self) -> Result<Stmt, String> {
@@ -41,7 +70,7 @@ impl Parser {
             initializer = self.expression()?;
         }
         self.consume(SEMICOLON, "Expect ';' after variable declaration.")?;
-        Ok(Var { name, initializer })
+        Ok(Stmt::Var { name, initializer })
     }
 
     fn statement(&mut self) -> Result<Stmt, String> {
@@ -139,7 +168,7 @@ impl Parser {
 
         let body = self.statement()?;
 
-        // Desugar for-loop into while-loop
+        // De-sugar the for-loop into a while-loop
 
         let mut statements = Vec::new();
 
@@ -148,7 +177,7 @@ impl Parser {
         }
 
         let mut body = match body {
-            Block { statements } => statements,
+            Stmt::Block { statements } => statements,
             _ => vec![body]
         };
 
@@ -156,12 +185,12 @@ impl Parser {
             body.push(Stmt::Expression {expression: increment});
         }
 
-        let body = Box::new(Block { statements: body});
+        let body = Box::new(Stmt::Block { statements: body});
         if statements.is_empty() {
-            Ok(While { expression: condition, body})
+            Ok(Stmt::While { expression: condition, body})
         } else {
-            statements.push(While { expression: condition, body});
-            Ok(Block {statements})
+            statements.push(Stmt::While { expression: condition, body});
+            Ok(Stmt::Block {statements})
         }
     }
 
@@ -172,7 +201,7 @@ impl Parser {
     fn assignment(&mut self) -> Result<Box<Expr>, String> {
         let expr = self.or()?;
         if self.match_token(&[EQUAL]) {
-            let equals = self.previous();
+            let equals = self.take_previous();
             // Assignment is right-associative, recursively call assignment to parse rhs
             let value = self.assignment()?;
             return match *expr {
@@ -192,7 +221,7 @@ impl Parser {
     fn or(&mut self) -> Result<Box<Expr>, String> {
         let mut expr = self.and()?;
         while self.match_token(&[OR]) {
-            let operator = self.previous();
+            let operator = self.take_previous();
             let right = self.and()?;
             expr = Box::new(Logical { left: expr, operator, right });
         }
@@ -202,7 +231,7 @@ impl Parser {
     fn and(&mut self) -> Result<Box<Expr>, String> {
         let mut expr = self.equality()?;
         while self.match_token(&[AND]) {
-            let operator = self.previous();
+            let operator = self.take_previous();
             let right = self.equality()?;
             expr = Box::new(Logical {left: expr, operator, right });
         }
@@ -212,7 +241,7 @@ impl Parser {
     fn equality(&mut self) -> Result<Box<Expr>, String> {
         let mut left = self.comparison()?;
         while self.match_token(&[BANG_EQUAL, EQUAL_EQUAL]) {
-            let operator = self.previous();
+            let operator = self.take_previous();
             let right = self.comparison()?;
             left = Box::new(Binary {
                 left,
@@ -254,7 +283,7 @@ impl Parser {
         &self.tokens[self.current as usize]
     }
 
-    fn previous(&mut self) -> Token {
+    fn take_previous(&mut self) -> Token {
         let dest = &mut self.tokens[(self.current - 1) as usize];
         mem::replace(dest, Token::new(NIL, String::new(), NULL, -1))
     }
@@ -262,7 +291,7 @@ impl Parser {
     fn comparison(&mut self) -> Result<Box<Expr>, String> {
         let mut left = self.term()?;
         while self.match_token(&[GREATER, GREATER_EQUAL, LESS, LESS_EQUAL]) {
-            let operator = self.previous();
+            let operator = self.take_previous();
             let right = self.term()?;
             left = Box::new(Binary {
                 left,
@@ -276,7 +305,7 @@ impl Parser {
     fn term(&mut self) -> Result<Box<Expr>, String> {
         let mut left = self.factor()?;
         while self.match_token(&[MINUS, PLUS]) {
-            let operator = self.previous();
+            let operator = self.take_previous();
             let right = self.factor()?;
             left = Box::new(Binary {
                 left,
@@ -290,7 +319,7 @@ impl Parser {
     fn factor(&mut self) -> Result<Box<Expr>, String> {
         let mut left = self.unary()?;
         while self.match_token(&[SLASH, STAR]) {
-            let operator = self.previous();
+            let operator = self.take_previous();
             let right = self.unary()?;
             left = Box::new(Binary {
                 left,
@@ -303,18 +332,46 @@ impl Parser {
 
     fn unary(&mut self) -> Result<Box<Expr>, String> {
         if self.match_token(&[BANG, MINUS]) {
-            let operator = self.previous();
-            return match self.unary() {
-                Ok(right) => Ok(Box::new(Unary { operator, right })),
-                Err(msg) => Err(msg),
-            };
+            let operator = self.take_previous();
+            let right = self.unary()?;
+            return Ok(Box::new(Unary { operator, right }));
         }
-        self.primary()
+        self.call()
+    }
+
+    fn call(&mut self) -> Result<Box<Expr>, String> {
+        let mut expr = self.primary()?;
+        loop {
+            if self.match_token(&[LEFT_PAREN]) {
+                expr = self.finish_call(expr)?;
+            }
+            else {
+                break;
+            }
+        }
+        Ok(expr)
+    }
+
+    fn finish_call(&mut self, callee: Box<Expr>) -> Result<Box<Expr>, String> {
+        let mut arguments = Vec::new();
+        if !self.check(RIGHT_PAREN) {
+            // Parse each argument as an expression
+            arguments.push(*self.expression()?);
+            // Look for a comma after every expression
+            while self.match_token(&[COMMA]) {
+                if arguments.len() >= ARGUMENT_LIMIT {
+                    lox::token_error(self.peek(), &format!("Can't have more than {ARGUMENT_LIMIT} arguments."));
+                }
+                arguments.push(*self.expression()?);
+            }
+        }
+        let paren = self.consume(RIGHT_PAREN, "Expect ')' after arguments.")?;
+        Ok(Box::new(Call { callee, paren, arguments }))
     }
 
     fn primary(&mut self) -> Result<Box<Expr>, String> {
         if self.match_token(&[NUMBER, STRING]) {
-            return Ok(Box::new(Literal { value: self.previous().literal }));
+            return Ok(Box::new(Literal { value: self.take_previous().literal }));
         }
 
         if self.match_token(&[TRUE]) {
@@ -330,7 +387,7 @@ impl Parser {
         }
 
         if self.match_token(&[IDENTIFIER]) {
-            return Ok(Box::new(Variable { name: self.previous() }));
+            return Ok(Box::new(Variable { name: self.take_previous() }));
         }
 
         if self.match_token(&[LEFT_PAREN]) {
@@ -346,7 +403,7 @@ impl Parser {
     fn consume(&mut self, token_type: TokenType, message: &str) -> Result<Token, String> {
         if self.check(token_type) {
             self.advance();
-            return Ok(self.previous());
+            return Ok(self.take_previous());
         }
         lox::token_error(self.peek(), message);
         Err(String::from(message))
@@ -356,7 +413,7 @@ impl Parser {
     fn synchronize(&mut self) {
         self.advance();
         while !self.is_at_end() {
-            if self.previous().token_type == SEMICOLON {
+            if self.take_previous().token_type == SEMICOLON {
                 return;
             }
             match self.peek().token_type {

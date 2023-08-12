@@ -1,4 +1,8 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
+
+use crate::clock::Clock;
 use crate::interpreter::InterpreterError;
 use crate::token_literal::TokenLiteral;
 use crate::token::Token;
@@ -6,11 +10,11 @@ use crate::token::Token;
 #[derive(Default)]
 pub struct Environment {
     values: HashMap<String, TokenLiteral>,
-    pub enclosing: Option<Box<Environment>>,
+    pub enclosing: Option<Rc<RefCell<Environment>>>,
 }
 
-impl <'a> Environment {
-    pub fn new (enclosing: Option<Box<Environment>>) -> Self {
+impl Environment {
+    pub fn new (enclosing: Option<Rc<RefCell<Environment>>>) -> Self {
         Self { values: HashMap::new(), enclosing }
     }
 
@@ -23,7 +27,7 @@ impl <'a> Environment {
             Some(val) => Ok(val.clone()),
             None => {
                 match self.enclosing.as_mut() {
-                    Some(enclosing) => enclosing.get(name),
+                    Some(enclosing) => enclosing.borrow_mut().get(name),
                     None => {
                         let msg = format!("Undefined variable '{}'", &name.lexeme);
                         Err(InterpreterError::OperatorError { line: name.line, msg})
@@ -41,7 +45,7 @@ impl <'a> Environment {
             }
             None => {
                 match self.enclosing.as_mut() {
-                    Some(enclosing) => enclosing.assign(name, value),
+                    Some(enclosing) => enclosing.borrow_mut().assign(name, value),
                     None => {
                         let msg = format!("Undefined variable '{}'.", &name.lexeme);
                         Err(InterpreterError::OperatorError{line: name.line, msg})
@@ -49,5 +53,11 @@ impl <'a> Environment {
                 }
             }
         }
+    }
+
+    pub fn init_native_funcs(&mut self) {
+        // Native functions are extensible via implementing the LoxCallable trait object on them
+        // Clock
+        self.define(String::from("clock"), TokenLiteral::LOX_CALLABLE(Rc::new(Clock)));
     }
 }

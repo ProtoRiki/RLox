@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use crate::expression::Expr;
 use crate::token::Token;
 
@@ -8,6 +9,10 @@ pub enum Stmt {
 
     Expression {
         expression: Box<Expr>,
+    },
+
+    Function {
+        ptr: Rc<FunctionObject>
     },
 
     If {
@@ -29,4 +34,10 @@ pub enum Stmt {
         expression: Box<Expr>,
         body: Box<Stmt>,
     },
+}
+
+pub struct FunctionObject {
+    pub name: Token,
+    pub params: Vec<Token>,
+    pub body: Vec<Stmt>
 }

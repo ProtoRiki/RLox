@@ -1,5 +1,4 @@
-use std::io;
-use std::io::Write;
+use std::io::{self, Write};
 use std::fs;
 use std::process;
 
@@ -86,7 +85,7 @@ pub fn token_error(token: &Token, message: &str) {
 
 pub fn runtime_error(error: &InterpreterError) {
     match error {
-        InterpreterError::LiteralError(msg) => eprintln!("Runtime Error {}", msg),
+        InterpreterError::LiteralError(msg) => eprintln!("Runtime Error: {}", msg),
         InterpreterError::OperatorError { line, msg } => {
             eprintln!("[line {}] Runtime Error {}", line, msg);
         }
@@ -96,6 +95,6 @@ pub fn runtime_error(error: &InterpreterError) {
 }
 
 pub fn report(line: i32, loc: &str, message: &str) {
-    eprintln!("[line {line}] Syntax Error {loc}: {message}");
+    eprintln!("[line {line}] Syntax Error: {loc}: {message}");
     unsafe { HAD_ERROR = true; }
 }

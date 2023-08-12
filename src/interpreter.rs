@@ -1,4 +1,6 @@
 use std::mem;
+use std::rc::Rc;
+use std::cell::RefCell;
 
 use crate::expression::Expr::{self, *};
 use crate::lox;
@@ -6,9 +8,11 @@ use crate::statement::Stmt::{self, *};
 use crate::token_literal::TokenLiteral;
 use crate::token_type::TokenType::*;
 use crate::environment::Environment;
+use crate::function::LoxFunction;
 
 pub struct Interpreter {
-    env: Box<Environment>
+    env: Rc<RefCell<Environment>>,
+    pub global: Rc<RefCell<Environment>>
 }
 
 pub enum InterpreterError {
@@ -18,8 +22,11 @@ pub enum InterpreterError {
 
 impl Interpreter {
     pub fn new() -> Self {
-        Self { env: Box::new(Environment::new(None)) }
+        let global = Rc::new(RefCell::new(Environment::new(None)));
+        (*global).borrow_mut().init_native_funcs();
+        Self { env: Rc::clone(&global), global}
     }
+
     pub fn interpret(&mut self, statements: Vec<Stmt>) {
         for statement in statements.iter() {
             if let Err(error) = self.accept_statement(statement) {
@@ -33,6 +40,7 @@ impl Interpreter {
         match expr {
             Assign { .. } => self.visit_assign_expr(expr),
             Binary { .. } => self.visit_binary_expr(expr),
+            Call { .. } => self.visit_call_expr(expr),
             Grouping { .. } => self.visit_grouping_expr(expr),
             Literal { .. } => self.visit_literal_expr(expr),
             Logical { .. } => self.visit_logical_expr(expr),
@@ -45,6 +53,7 @@ impl Interpreter {
         match stmt {
             Block { .. } => self.visit_block_stmt(stmt),
             Expression { .. } => self.visit_expression_stmt(stmt),
+            Function { .. } => self.visit_function_stmt(stmt),
             Print { .. } => self.visit_print_stmt(stmt),
             Var { .. } => self.visit_var_stmt(stmt),
             If { .. } => self.visit_if_stmt(stmt),
@@ -56,7 +65,8 @@ impl Interpreter {
     fn visit_block_stmt(&mut self, stmt: &Stmt) -> Result<(), InterpreterError> {
         match stmt {
             Block { statements } => {
-                self.execute_block(statements)?;
+                let env = Rc::new(RefCell::new(Environment::new(Some(Rc::clone(&self.env)))));
+                self.execute_block(statements, env)?;
             },
             _ => {
                 let msg = String::from("Non-block statement passed to block visitor");
@@ -65,19 +75,16 @@ impl Interpreter {
         }
         Ok(())
     }
-    fn execute_block(&mut self, statements: &[Stmt]) -> Result<(), InterpreterError> {
+    pub fn execute_block(&mut self, statements: &[Stmt], environment: Rc<RefCell<Environment>>) -> Result<(), InterpreterError> {
         // I had an aneurysm writing this function jesus christ
-        let enclosing = mem::take(&mut self.env);
-        self.env = Box::from(Environment::new(Some(enclosing)));
+        let previous = mem::replace(&mut self.env, environment);
         for statement in statements.iter() {
             if let Err(error) = self.accept_statement(statement) {
-                let current = mem::take(&mut self.env.enclosing);
-                self.env = current.unwrap();
+                self.env = previous;
                 return Err(error);
             }
         }
-        let current = mem::take(&mut self.env.enclosing);
-        self.env = current.unwrap();
+        self.env = previous;
         Ok(())
         // Not ok
     }
@@ -110,7 +117,7 @@ impl Interpreter {
         match stmt {
             Var { name, initializer } => {
                 let value = self.accept_expr(initializer)?;
-                self.env.define(name.lexeme.clone(), value);
+                self.env.borrow_mut().define(name.lexeme.clone(), value);
                 Ok(())
             }
             _ => {
@@ -151,6 +158,20 @@ impl Interpreter {
         }
     }
 
+    fn visit_function_stmt(&mut self, stmt: &Stmt) -> Result<(), InterpreterError> {
+        match stmt {
+            Function { ptr } => {
+                let function = Rc::new(LoxFunction::new(Function { ptr: Rc::clone(ptr) }));
+                self.env.borrow_mut().define(ptr.as_ref().name.lexeme.clone(), TokenLiteral::LOX_CALLABLE(function));
+                Ok(())
+            }
+            _ => {
+                let msg= String::from("Non-function statement passed to function visitor");
+                Err(InterpreterError::LiteralError(msg))
+            }
+        }
+    }
+
     fn visit_literal_expr(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
         match expr {
             Literal { value } => Ok(value.clone()),
@@ -181,9 +202,10 @@ impl Interpreter {
     fn visit_grouping_expr(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
         match expr {
             Grouping { expression } => self.accept_expr(expression),
-            _ => Err(InterpreterError::LiteralError(String::from(
-                "Non-group expression passed to group visitor",
-            ))),
+            _ => {
+                let msg = String::from("Non-group expression passed to group visitor");
+                Err(InterpreterError::LiteralError(msg))
+            } 
         }
     }
     fn visit_binary_expr(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
@@ -297,9 +319,43 @@ impl Interpreter {
                     },
                 }
             }
-            _ => Err(InterpreterError::LiteralError(String::from(
-                "Non-binary expression passed to binary visitor",
-            ))),
+            _ => {
+                let msg = String::from("Non-binary expression passed to binary visitor");
+                Err(InterpreterError::LiteralError(msg))
+            },
+        }
+    }
+
+    fn visit_call_expr(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
+        match expr {
+            Call { callee, paren, arguments } => {
+
+                let callee = self.accept_expr(callee)?;
+                let mut parameters = Vec::with_capacity(arguments.len());
+                for arg in arguments.iter() {
+                    parameters.push(self.accept_expr(arg)?)
+                }
+
+                match callee {
+                    TokenLiteral::LOX_CALLABLE(callable) => {
+                        match callable.arity() == parameters.len() {
+                            true => callable.call(self, parameters),
+                            false => {
+                                let msg = format!("Expected {} arguments but got {}.", callable.arity(), parameters.len());
+                                Err(InterpreterError::OperatorError { line: paren.line, msg})
+                            }
+                        }
+                    }
+                    _ => {
+                        let msg = String::from("Can only call functions and classes.");
+                        Err(InterpreterError::OperatorError { line: paren.line, msg})
+                    }
+                }
+            }
+            _ => {
+                let msg = String::from("Non-call expression passed to call visitor");
+                Err(InterpreterError::LiteralError(msg))
+            }
         }
     }
 
@@ -331,7 +387,7 @@ impl Interpreter {
 
     fn visit_variable_expr(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
         match expr {
-            Variable { name } => self.env.get(name),
+            Variable { name } => self.env.borrow_mut().get(name),
             _ => {
                 let msg = String::from("Non-variable expression passed to variable visitor");
                 Err(InterpreterError::LiteralError(msg))
@@ -343,7 +399,7 @@ impl Interpreter {
         match expr {
             Assign { name, value } => {
                 let value = self.accept_expr(value)?;
-                self.env.assign(name, value.clone())?;
+                self.env.borrow_mut().assign(name, value.clone())?;
                 Ok(value)
             }
             _ => {

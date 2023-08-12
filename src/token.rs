@@ -2,7 +2,6 @@ use std::fmt::{Display, Formatter};
 use crate::token_type::TokenType;
 use crate::token_literal::TokenLiteral;
 
-#[derive(Debug)]
 pub struct Token {
     pub token_type: TokenType,
     pub lexeme: String,
@@ -22,6 +21,6 @@ impl Token {
 }
 impl Display for Token {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?} {} {:?}", self.token_type, self.lexeme, self.literal)
+        write!(f, "{:?} {} {}", self.token_type, self.lexeme, self.literal)
     }
 }

@@ -1,11 +1,15 @@
 use std::fmt::{Display, Formatter};
+use std::rc::Rc;
 
-#[derive(Debug, Clone)]
+use crate::callable::LoxCallable;
+
 #[allow(non_camel_case_types)]
+#[derive(Clone)]
 pub enum TokenLiteral {
-    LOX_STRING(String),
-    LOX_NUMBER(f64),
     LOX_BOOL(bool),
+    LOX_CALLABLE(Rc<dyn LoxCallable>),
+    LOX_NUMBER(f64),
+    LOX_STRING(String),
     NULL
 }
 
@@ -16,6 +20,7 @@ impl Display for TokenLiteral {
             TokenLiteral::LOX_NUMBER(number) => write!(f, "{}", number),
             TokenLiteral::LOX_BOOL(boolean) => write!(f, "{}", boolean),
             TokenLiteral::NULL => write!(f, "nil"),
+            TokenLiteral::LOX_CALLABLE(callable) => write!(f, "{}", callable),
         }
     }
 }

@@ -8,6 +8,9 @@ mod expression;
 mod interpreter;
 mod statement;
 mod environment;
+mod callable;
+mod function;
+mod clock;
 
 use std::env;
 use std::cmp::Ordering;
