@@ -3,12 +3,13 @@ use std::rc::Rc;
 
 use crate::expression::Expr::{self, *};
 use crate::lox;
-use crate::statement::{Stmt, FunctionObject};
+use crate::statement::Stmt;
+use crate::function_object::FunctionObject;
 use crate::token::Token;
-use crate::token_literal::TokenLiteral::{LOX_BOOL, NULL};
+use crate::token_literal::TokenLiteral;
 use crate::token_type::TokenType::{self, *};
 
-const ARGUMENT_LIMIT: usize = 255;
+const FUNCTION_ARGUMENT_LIMIT: usize = 255;
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -45,14 +46,14 @@ impl Parser {
         self.consume(LEFT_PAREN, &format!("Expect '(' after {function_type} name"))?;
         let mut parameters = Vec::new();
         if !self.check(RIGHT_PAREN) {
-            if parameters.len() >= ARGUMENT_LIMIT {
-                lox::error(self.peek().line, &format!("Can't have more than {ARGUMENT_LIMIT} parameters."));
+            if parameters.len() >= FUNCTION_ARGUMENT_LIMIT {
+                lox::error(self.peek().line, &format!("Can't have more than {FUNCTION_ARGUMENT_LIMIT} parameters."));
             }
             parameters.push(self.consume(IDENTIFIER, "Expect parameter name.")?);
 
             while self.match_token(&[COMMA]) {
-                if parameters.len() >= ARGUMENT_LIMIT {
-                    lox::error(self.peek().line, &format!("Can't have more than {ARGUMENT_LIMIT} parameters."));
+                if parameters.len() >= FUNCTION_ARGUMENT_LIMIT {
+                    lox::error(self.peek().line, &format!("Can't have more than {FUNCTION_ARGUMENT_LIMIT} parameters."));
                 }
                 parameters.push(self.consume(IDENTIFIER, "Expect parameter name.")?);
             }
@@ -65,7 +66,7 @@ impl Parser {
 
     fn var_declaration(&mut self) -> Result<Stmt, String> {
         let name = self.consume(IDENTIFIER, "Expect variable name.")?;
-        let mut initializer = Box::new(Literal { value: NULL });
+        let mut initializer = Box::new(Literal { value: TokenLiteral::NULL });
         if self.match_token(&[EQUAL]) {
             initializer = self.expression()?;
         }
@@ -132,7 +133,7 @@ impl Parser {
         let else_branch = if self.match_token(&[ELSE]) {
             Box::new(self.statement()?)
         } else {
-            Box::new(Stmt::Expression { expression: Box::new(Literal { value: NULL })})
+            Box::new(Stmt::Expression { expression: Box::new(Literal { value: TokenLiteral::NULL })})
         };
         Ok(Stmt::If {expression: condition, then_branch, else_branch})
     }
@@ -151,7 +152,7 @@ impl Parser {
         // var -> initializer included
         // no var -> no initialization, must be expression
         let (initializer, had_initializer) = match (self.match_token(&[SEMICOLON]), self.match_token(&[VAR])) {
-            (true, _) => (Stmt::Expression { expression: Box::new(Literal { value: NULL })}, false),
+            (true, _) => (Stmt::Expression { expression: Box::new(Literal { value: TokenLiteral::NULL })}, false),
             (false, true) => (self.var_declaration()?, true),
             (false, false) => (self.expression_statement()?, true),
         };
@@ -159,14 +160,14 @@ impl Parser {
         let condition = if !self.check(SEMICOLON) {
             self.expression()?
         } else {
-            Box::new(Literal { value: LOX_BOOL(true) })
+            Box::new(Literal { value: TokenLiteral::LOX_BOOL(true) })
         };
         self.consume(SEMICOLON, "Expect ';' after loop condition")?;
 
         let (increment, had_increment) = if !self.check(RIGHT_PAREN) {
             (self.expression()?, true)
         } else {
-            (Box::new(Literal { value: NULL }), false)
+            (Box::new(Literal { value: TokenLiteral::NULL }), false)
         };
         self.consume(RIGHT_PAREN, "Expect ')' after for clause")?;
 
@@ -201,7 +202,7 @@ impl Parser {
     fn return_statement(&mut self) -> Result<Stmt, String> {
         let keyword = self.take_previous();
         let value = if !self.check(SEMICOLON) { self.expression()? } else {
-            Box::new(Literal { value: NULL })
+            Box::new(Literal { value: TokenLiteral::NULL })
         };
         self.consume(SEMICOLON, "Expect ';' after return value.")?;
         Ok(Stmt::Return { keyword, value })
@@ -294,7 +295,7 @@ impl Parser {
 
     fn take_previous(&mut self) -> Token {
         let dest = &mut self.tokens[(self.current - 1) as usize];
-        mem::replace(dest, Token::new(NIL, String::new(), NULL, -1))
+        mem::replace(dest, Token::new(NIL, String::new(), TokenLiteral::NULL, -1))
     }
 
     fn comparison(&mut self) -> Result<Box<Expr>, String> {
@@ -356,8 +357,8 @@ impl Parser {
             arguments.push(*self.expression()?);
             // Look for a comma after every expression
             while self.match_token(&[COMMA]) {
-                if arguments.len() >= ARGUMENT_LIMIT {
-                    lox::token_error(self.peek(), &format!("Can't have more than {ARGUMENT_LIMIT} arguments."));
+                if arguments.len() >= FUNCTION_ARGUMENT_LIMIT {
+                    lox::token_error(self.peek(), &format!("Can't have more than {FUNCTION_ARGUMENT_LIMIT} arguments."));
                 }
                 arguments.push(*self.expression()?);
             }
@@ -372,15 +373,15 @@ impl Parser {
         }
 
         if self.match_token(&[TRUE]) {
-            return Ok(Box::new(Literal { value: LOX_BOOL(true) }));
+            return Ok(Box::new(Literal { value: TokenLiteral::LOX_BOOL(true) }));
         }
 
         if self.match_token(&[FALSE]) {
-            return Ok(Box::new(Literal { value: LOX_BOOL(false) }));
+            return Ok(Box::new(Literal { value: TokenLiteral::LOX_BOOL(false) }));
         }
 
         if self.match_token(&[NIL]) {
-            return Ok(Box::new(Literal { value: NULL }));
+            return Ok(Box::new(Literal { value: TokenLiteral::NULL }));
         }
 
         if self.match_token(&[IDENTIFIER]) {

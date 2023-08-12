@@ -1,5 +1,6 @@
 use std::rc::Rc;
 use crate::expression::Expr;
+use crate::function_object::FunctionObject;
 use crate::token::Token;
 
 pub enum Stmt {
@@ -41,8 +42,3 @@ pub enum Stmt {
     },
 }
 
-pub struct FunctionObject {
-    pub name: Token,
-    pub params: Vec<Token>,
-    pub body: Vec<Stmt>
-}

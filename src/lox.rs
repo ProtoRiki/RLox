@@ -3,7 +3,7 @@ use std::fs;
 use std::process;
 
 use crate::token::Token;
-use crate::token_type::TokenType::EOF;
+use crate::token_type::TokenType;
 use crate::scanner::Scanner;
 use crate::parser::Parser;
 use crate::interpreter::{Interpreter, InterpreterError};
@@ -75,7 +75,7 @@ pub fn error(line: i32, message: &str) {
 }
 
 pub fn token_error(token: &Token, message: &str) {
-    if token.token_type == EOF {
+    if token.token_type == TokenType::EOF {
         report(token.line, "at end", message);
     }
     else {
@@ -85,9 +85,8 @@ pub fn token_error(token: &Token, message: &str) {
 
 pub fn runtime_error(error: &InterpreterError) {
     match error {
-        InterpreterError::LiteralError(msg) => eprintln!("Runtime Error: {}", msg),
-        InterpreterError::OperatorError { line, msg } => {
-            eprintln!("[line {}] Runtime Error {}", line, msg);
+        InterpreterError::OperatorError { line, err_msg } => {
+            eprintln!("[line {}] Runtime Error {}", line, err_msg);
         }
     }
     unsafe { HAD_RUNTIME_ERROR = true }

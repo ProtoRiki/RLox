@@ -6,7 +6,8 @@ use std::rc::Rc;
 use crate::callable::LoxCallable;
 use crate::environment::Environment;
 use crate::interpreter::{Interpreter, InterpreterError};
-use crate::statement::{Stmt, FunctionObject};
+use crate::statement::Stmt;
+use crate::function_object::FunctionObject;
 use crate::token_literal::TokenLiteral;
 
 pub struct LoxFunction {

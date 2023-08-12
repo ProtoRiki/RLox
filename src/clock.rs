@@ -3,8 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::callable::LoxCallable;
 use crate::interpreter::{Interpreter, InterpreterError};
-use crate::token_literal::TokenLiteral;
-use crate::token_literal::TokenLiteral::LOX_NUMBER;
+use crate::token_literal::TokenLiteral::{self, LOX_NUMBER};
 
 pub struct Clock;
 

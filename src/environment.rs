@@ -29,8 +29,8 @@ impl Environment {
                 match self.enclosing.as_mut() {
                     Some(enclosing) => enclosing.borrow_mut().get(name),
                     None => {
-                        let msg = format!("Undefined variable '{}'", &name.lexeme);
-                        Err(InterpreterError::OperatorError { line: name.line, msg})
+                        let err_msg = format!("Undefined variable '{}'", &name.lexeme);
+                        Err(InterpreterError::OperatorError { line: name.line, err_msg})
                     }
                 }
             }
@@ -47,8 +47,8 @@ impl Environment {
                 match self.enclosing.as_mut() {
                     Some(enclosing) => enclosing.borrow_mut().assign(name, value),
                     None => {
-                        let msg = format!("Undefined variable '{}'.", &name.lexeme);
-                        Err(InterpreterError::OperatorError{line: name.line, msg})
+                        let err_msg = format!("Undefined variable '{}'.", &name.lexeme);
+                        Err(InterpreterError::OperatorError{line: name.line, err_msg})
                     }
                 }
             }

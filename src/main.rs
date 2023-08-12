@@ -11,6 +11,7 @@ mod environment;
 mod callable;
 mod function;
 mod clock;
+mod function_object;
 
 use std::env;
 use std::cmp::Ordering;

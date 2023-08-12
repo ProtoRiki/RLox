@@ -1,12 +1,10 @@
-use std::str::{self, FromStr};
 use std::mem;
+use std::str::{self, FromStr};
 
 use crate::lox;
 use crate::token::Token;
-use crate::token_literal::TokenLiteral;
-use crate::token_literal::TokenLiteral::*;
-use crate::token_type::TokenType;
-use crate::token_type::TokenType::*;
+use crate::token_literal::TokenLiteral::{self, *};
+use crate::token_type::TokenType::{self, *};
 
 pub struct Scanner {
     source: String,

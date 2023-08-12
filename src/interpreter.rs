@@ -2,12 +2,12 @@ use std::mem;
 use std::rc::Rc;
 use std::cell::RefCell;
 
+use crate::environment::Environment;
 use crate::expression::Expr::{self, *};
 use crate::lox;
 use crate::statement::Stmt::{self, *};
 use crate::token_literal::TokenLiteral;
 use crate::token_type::TokenType::*;
-use crate::environment::Environment;
 use crate::function::LoxFunction;
 
 pub struct Interpreter {
