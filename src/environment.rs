@@ -60,6 +60,6 @@ impl Environment {
     pub fn init_native_funcs(&mut self) {
         // Native functions are extensible via implementing the LoxCallable trait object on them
         // Clock
-        self.define(String::from("clock"), TokenLiteral::LOX_CALLABLE(Rc::new(LoxCallable::Native(NativeFunction::CLOCK(Clock)))));
+        self.define(String::from("clock"),TokenLiteral::LOX_CALLABLE(Rc::new(LoxCallable::Native(NativeFunction::NativeClock(Clock)))));
     }
 }
