@@ -10,7 +10,7 @@ pub enum TokenLiteral {
     LOX_CALLABLE(Rc<LoxCallable>),
     LOX_NUMBER(f64),
     LOX_STRING(Rc<String>),
-    NULL
+    LOX_NULL
 }
 
 impl Display for TokenLiteral {
@@ -19,7 +19,7 @@ impl Display for TokenLiteral {
             TokenLiteral::LOX_STRING(value) => write!(f, "{value}"),
             TokenLiteral::LOX_NUMBER(number) => write!(f, "{}", number),
             TokenLiteral::LOX_BOOL(boolean) => write!(f, "{}", boolean),
-            TokenLiteral::NULL => write!(f, "nil"),
+            TokenLiteral::LOX_NULL => write!(f, "nil"),
             TokenLiteral::LOX_CALLABLE(callable) => write!(f, "{}", callable),
         }
     }

@@ -1,8 +1,9 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::rc::Rc;
-use crate::callable::LoxCallable;
 
+use crate::callable::LoxCallable;
 use crate::clock::Clock;
 use crate::interpreter::InterpreterError;
 use crate::native::NativeFunction;
@@ -39,6 +40,21 @@ impl Environment {
         }
     }
 
+    pub fn get_at(&mut self, distance: usize, name: &Token) -> Result<TokenLiteral, InterpreterError> {
+        if distance == 0 {
+            return self.get(name)
+        }
+        self.ancestor(distance).deref().borrow_mut().get(name)
+    }
+
+    fn ancestor(&mut self, distance: usize) -> Rc<RefCell<Environment>> {
+        let mut env = self.enclosing.clone().unwrap();
+        for _ in 1..distance {
+            env = env.deref().take().enclosing.unwrap().clone();
+        }
+        env
+    }
+
     pub fn assign(&mut self, name: &Token, value: TokenLiteral) -> Result<(), InterpreterError> {
         match self.values.get_mut(&name.lexeme) {
             Some(val) => {
@@ -55,6 +71,13 @@ impl Environment {
                 }
             }
         }
+    }
+
+    pub fn assign_at(&mut self, distance: usize, name: &Token, value: TokenLiteral) -> Result<(), InterpreterError> {
+        if distance == 0 {
+            return self.assign(name, value);
+        }
+        self.ancestor(distance).deref().borrow_mut().assign(name, value)
     }
 
     pub fn init_native_funcs(&mut self) {

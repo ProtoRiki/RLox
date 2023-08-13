@@ -13,6 +13,7 @@ mod function;
 mod clock;
 mod function_object;
 mod native;
+mod resolver;
 
 use std::env;
 use std::cmp::Ordering;

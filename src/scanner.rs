@@ -31,7 +31,7 @@ impl Scanner {
             self.start = self.current;
             self.scan_token();
         }
-        self.tokens.push(Token::new(EOF, String::from(""), NULL, self.line));
+        self.tokens.push(Token::new(EOF, String::from(""), LOX_NULL, self.line));
         mem::take(&mut self.tokens)
     }
 
@@ -133,7 +133,7 @@ impl Scanner {
     }
 
     fn add_token_nonliteral(&mut self, token_type: TokenType) {
-        self.add_token(token_type, NULL);
+        self.add_token(token_type, LOX_NULL);
     }
 
     fn add_token(&mut self, token_type: TokenType, literal: TokenLiteral) {

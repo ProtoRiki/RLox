@@ -4,7 +4,8 @@ use crate::token_literal::TokenLiteral;
 pub enum Expr {
     Assign {
         name: Token,
-        value: Box<Expr>
+        value: Box<Expr>,
+        id: usize
     },
 
     Binary {
@@ -40,5 +41,6 @@ pub enum Expr {
 
     Variable {
         name: Token,
+        id: usize,
     },
 }

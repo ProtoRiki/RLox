@@ -7,6 +7,7 @@ use crate::token_type::TokenType;
 use crate::scanner::Scanner;
 use crate::parser::Parser;
 use crate::interpreter::{Interpreter, InterpreterError};
+use crate::resolver::Resolver;
 
 static mut HAD_ERROR: bool = false;
 static mut HAD_RUNTIME_ERROR: bool = false;
@@ -42,13 +43,9 @@ pub fn run_prompt() {
         let mut buffer = String::new();
         match io::stdin().read_line(&mut buffer) {
             Ok(n) => {
-                if n == 0 {
-                    break;
-                }
+                if n == 0 { break; }
                 run(&mut interpreter, buffer);
-                unsafe {
-                    HAD_ERROR = false;
-                }
+                unsafe { HAD_ERROR = false; }
             },
             Err(err) => {
                 eprintln!("{err}");
@@ -61,13 +58,20 @@ pub fn run_prompt() {
 pub fn run(interpreter: &mut Interpreter, source: String) {
     let mut scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens();
+
     let mut parser = Parser::new(tokens);
     let statements = parser.parse();
-    if statements.is_err() {
-        return;
-    }
+
+    // Return early if parsing fails
+    if statements.is_err() { return; }
+
     let statements = statements.unwrap();
-    interpreter.interpret(statements);
+    let mut resolver = Resolver::new(interpreter);
+    resolver.resolve_statements(&statements);
+
+    if unsafe { HAD_ERROR } { return; }
+
+    interpreter.interpret(&statements);
 }
 
 pub fn error(line: i32, message: &str) {

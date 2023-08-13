@@ -14,11 +14,12 @@ const FUNCTION_ARGUMENT_LIMIT: usize = 255;
 pub struct Parser {
     tokens: Vec<Token>,
     current: i32,
+    curr_id: usize
 }
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens, current: 0 }
+        Self { tokens, current: 0, curr_id: 0 }
     }
 
     pub fn parse(&mut self) -> Result<Vec<Stmt>, String> {
@@ -66,7 +67,7 @@ impl Parser {
 
     fn var_declaration(&mut self) -> Result<Stmt, String> {
         let name = self.consume(IDENTIFIER, "Expect variable name.")?;
-        let mut initializer = Box::new(Literal { value: TokenLiteral::NULL });
+        let mut initializer = Box::new(Literal { value: TokenLiteral::LOX_NULL });
         if self.match_token(&[EQUAL]) {
             initializer = self.expression()?;
         }
@@ -133,7 +134,7 @@ impl Parser {
         let else_branch = if self.match_token(&[ELSE]) {
             Box::new(self.statement()?)
         } else {
-            Box::new(Stmt::Expression { expression: Box::new(Literal { value: TokenLiteral::NULL })})
+            Box::new(Stmt::Expression { expression: Box::new(Literal { value: TokenLiteral::LOX_NULL })})
         };
         Ok(Stmt::If {expression: condition, then_branch, else_branch})
     }
@@ -152,7 +153,7 @@ impl Parser {
         // var -> initializer included
         // no var -> no initialization, must be expression
         let (initializer, had_initializer) = match (self.match_token(&[SEMICOLON]), self.match_token(&[VAR])) {
-            (true, _) => (Stmt::Expression { expression: Box::new(Literal { value: TokenLiteral::NULL })}, false),
+            (true, _) => (Stmt::Expression { expression: Box::new(Literal { value: TokenLiteral::LOX_NULL })}, false),
             (false, true) => (self.var_declaration()?, true),
             (false, false) => (self.expression_statement()?, true),
         };
@@ -167,7 +168,7 @@ impl Parser {
         let (increment, had_increment) = if !self.check(RIGHT_PAREN) {
             (self.expression()?, true)
         } else {
-            (Box::new(Literal { value: TokenLiteral::NULL }), false)
+            (Box::new(Literal { value: TokenLiteral::LOX_NULL }), false)
         };
         self.consume(RIGHT_PAREN, "Expect ')' after for clause")?;
 
@@ -202,7 +203,7 @@ impl Parser {
     fn return_statement(&mut self) -> Result<Stmt, String> {
         let keyword = self.take_previous();
         let value = if !self.check(SEMICOLON) { self.expression()? } else {
-            Box::new(Literal { value: TokenLiteral::NULL })
+            Box::new(Literal { value: TokenLiteral::LOX_NULL })
         };
         self.consume(SEMICOLON, "Expect ';' after return value.")?;
         Ok(Stmt::Return { keyword, value })
@@ -220,7 +221,11 @@ impl Parser {
             let value = self.assignment()?;
             return match *expr {
                 // Convert the r-value expression node into an l-value representation.
-                Variable { name } => Ok(Box::new(Assign { name, value })),
+                Variable { name , .. } => {
+                    let id = self.curr_id;
+                    self.curr_id += 1;
+                    Ok(Box::new(Assign { name, value, id }))
+                },
                 _ => {
                     // Error if left-hand-side is an invalid assignment target
                     // Report error but do not throw it
@@ -295,7 +300,7 @@ impl Parser {
 
     fn take_previous(&mut self) -> Token {
         let dest = &mut self.tokens[(self.current - 1) as usize];
-        mem::replace(dest, Token::new(NIL, String::new(), TokenLiteral::NULL, -1))
+        mem::replace(dest, Token::new(NIL, String::new(), TokenLiteral::LOX_NULL, -1))
     }
 
     fn comparison(&mut self) -> Result<Box<Expr>, String> {
@@ -381,11 +386,13 @@ impl Parser {
         }
 
         if self.match_token(&[NIL]) {
-            return Ok(Box::new(Literal { value: TokenLiteral::NULL }));
+            return Ok(Box::new(Literal { value: TokenLiteral::LOX_NULL }));
         }
 
         if self.match_token(&[IDENTIFIER]) {
-            return Ok(Box::new(Variable { name: self.take_previous() }));
+            let id = self.curr_id;
+            self.curr_id += 1;
+            return Ok(Box::new(Variable { name: self.take_previous(), id }));
         }
 
         if self.match_token(&[LEFT_PAREN]) {
