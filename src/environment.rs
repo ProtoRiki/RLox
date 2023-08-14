@@ -50,7 +50,6 @@ impl Environment {
     fn ancestor(&self, distance: usize) -> Rc<Environment> {
         let mut env = self.enclosing.clone().unwrap();
         for _ in 1..distance {
-            // env = env.deref().take().enclosing.unwrap().clone();
             env = env.enclosing.clone().unwrap()
         }
         env
