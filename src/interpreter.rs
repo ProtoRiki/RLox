@@ -1,6 +1,5 @@
 use std::mem;
 use std::rc::Rc;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Deref;
 use crate::callable::LoxCallable;
@@ -14,8 +13,8 @@ use crate::token_type::TokenType::*;
 use crate::function::LoxFunction;
 
 pub struct Interpreter {
-    pub env: Rc<RefCell<Environment>>,
-    pub global: Rc<RefCell<Environment>>,
+    pub global_env: Rc<Environment>,
+    pub curr_env: Rc<Environment>,
     pub locals: HashMap<usize, usize>
 }
 
@@ -25,9 +24,10 @@ pub enum InterpreterError {
 
 impl Interpreter {
     pub fn new() -> Self {
-        let global = Rc::new(RefCell::new(Environment::new(None)));
-        (*global).borrow_mut().init_native_funcs();
-        Self { env: Rc::clone(&global), global, locals: HashMap::new() }
+        let global = Environment::new(None);
+        global.init_native_funcs();
+        let global = Rc::new(global);
+        Self { curr_env: Rc::clone(&global), global_env: global, locals: HashMap::new() }
     }
 
     pub fn interpret(&mut self, statements: &[Stmt]) {
@@ -69,32 +69,32 @@ impl Interpreter {
     fn visit_block_stmt(&mut self, stmt: &Stmt) -> Result<TokenLiteral, InterpreterError> {
         match stmt {
             Block { statements } => {
-                let env = Rc::new(RefCell::new(Environment::new(Some(Rc::clone(&self.env)))));
+                let env = Rc::new(Environment::new(Some(Rc::clone(&self.curr_env))));
                 self.execute_block(statements, env)?;
             }
             _ => unreachable!("Non-block statement passed to block visitor")
         }
         Ok(TokenLiteral::LOX_NULL)
     }
-    pub fn execute_block(&mut self, statements: &[Stmt], environment: Rc<RefCell<Environment>>) -> Result<TokenLiteral, InterpreterError> {
-        let previous = mem::replace(&mut self.env, environment);
+    pub fn execute_block(&mut self, statements: &[Stmt], environment: Rc<Environment>) -> Result<TokenLiteral, InterpreterError> {
+        let previous = mem::replace(&mut self.curr_env, environment);
         for statement in statements.iter() {
             match self.accept_statement(statement) {
                 Ok(literal) => match literal {
                     TokenLiteral::LOX_NULL => (),
                     // Exit block early on reaching return
                     _ => {
-                        self.env = previous;
+                        self.curr_env = previous;
                         return Ok(literal);
                     }
                 }
                 Err(error) => {
-                    self.env = previous;
+                    self.curr_env = previous;
                     return Err(error);
                 }
             }
         }
-        self.env = previous;
+        self.curr_env = previous;
         Ok(TokenLiteral::LOX_NULL)
     }
 
@@ -123,7 +123,7 @@ impl Interpreter {
         match stmt {
             Var { name, initializer } => {
                 let value = self.accept_expr(initializer)?;
-                self.env.borrow_mut().define(name.lexeme.clone(), value);
+                self.curr_env.define(name.lexeme.clone(), value);
                 Ok(TokenLiteral::LOX_NULL)
             }
             _ => unreachable!("Non-var statement passed to var visitor")
@@ -157,11 +157,11 @@ impl Interpreter {
     fn visit_function_stmt(&mut self, stmt: &Stmt) -> Result<TokenLiteral, InterpreterError> {
         match stmt {
             Function { ptr } => {
-                let curr_env = self.env.clone();
+                let curr_env = self.curr_env.clone();
                 let function_obj = Function { ptr: Rc::clone(ptr) };
                 let function_obj = LoxFunction::new(function_obj, curr_env);
                 let function = Rc::new(LoxCallable::UserFunction(function_obj));
-                self.env.borrow_mut().define(ptr.as_ref().name.lexeme.clone(), TokenLiteral::LOX_CALLABLE(function));
+                self.curr_env.define(ptr.as_ref().name.lexeme.clone(), TokenLiteral::LOX_CALLABLE(function));
                 Ok(TokenLiteral::LOX_NULL)
             }
             _ => unreachable!("Non-function statement passed to function visitor")
@@ -374,8 +374,8 @@ impl Interpreter {
         match expr {
             Variable { name, id } => {
                 match self.locals.get(id) {
-                    Some(distance) => self.env.deref().borrow_mut().get_at(*distance, name),
-                    None => self.global.deref().borrow_mut().get(name)
+                    Some(distance) => self.curr_env.deref().get_at(*distance, name),
+                    None => self.global_env.deref().get(name)
                 }
             }
             _ => unreachable!("Non-variable expression passed to variable lookup")
@@ -392,8 +392,8 @@ impl Interpreter {
                 let value = self.accept_expr(value)?;
 
                 match self.locals.get(id) {
-                    Some(distance) => self.env.deref().borrow_mut().assign_at(*distance, name, value.clone()),
-                    None => self.global.deref().borrow_mut().assign(name, value.clone()),
+                    Some(distance) => self.curr_env.deref().assign_at(*distance, name, value.clone()),
+                    None => self.global_env.deref().assign(name, value.clone()),
                 }?;
 
                 Ok(value)

@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::fmt::{Display, Formatter};
 use std::iter::zip;
 use std::rc::Rc;
@@ -11,11 +10,11 @@ use crate::token_literal::TokenLiteral;
 
 pub struct LoxFunction {
     declaration: Stmt,
-    closure: Rc<RefCell<Environment>>
+    closure: Rc<Environment>
 }
 
 impl LoxFunction {
-    pub fn new(declaration: Stmt, closure: Rc<RefCell<Environment>>) -> Self {
+    pub fn new(declaration: Stmt, closure: Rc<Environment>) -> Self {
         match declaration {
             Stmt::Function { .. } => Self { declaration, closure },
             _ => panic!("Non-function declaration passed to LoxFunction constructor")
@@ -28,11 +27,11 @@ impl LoxFunction {
         match &self.declaration {
             Stmt::Function { ptr } => {
                 let FunctionObject { params, body , .. } = ptr.as_ref();
-                let mut environment = Environment::new(Some(Rc::clone(&self.closure)));
+                let environment = Environment::new(Some(Rc::clone(&self.closure)));
                 for (param_name, value) in zip(params.iter(), arguments.into_iter()) {
                     environment.define(param_name.lexeme.clone(), value);
                 }
-                interpreter.execute_block(body, Rc::new(RefCell::new(environment)))
+                interpreter.execute_block(body, Rc::new(environment))
             }
             _ => unreachable!()
         }

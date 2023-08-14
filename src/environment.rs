@@ -12,25 +12,25 @@ use crate::token::Token;
 
 #[derive(Default)]
 pub struct Environment {
-    values: HashMap<String, TokenLiteral>,
-    pub enclosing: Option<Rc<RefCell<Environment>>>,
+    values: RefCell<HashMap<String, TokenLiteral>>,
+    pub enclosing: Option<Rc<Environment>>,
 }
 
 impl Environment {
-    pub fn new (enclosing: Option<Rc<RefCell<Environment>>>) -> Self {
-        Self { values: HashMap::new(), enclosing }
+    pub fn new (enclosing: Option<Rc<Environment>>) -> Self {
+        Self { values: RefCell::new(HashMap::new()), enclosing }
     }
 
-    pub fn define(&mut self, name: String, value: TokenLiteral) {
-        self.values.insert(name, value);
+    pub fn define(&self, name: String, value: TokenLiteral) {
+        self.values.borrow_mut().insert(name, value);
     }
 
-    pub fn get(&mut self, name: &Token) -> Result<TokenLiteral, InterpreterError> {
-        match self.values.get(&name.lexeme) {
+    pub fn get(&self, name: &Token) -> Result<TokenLiteral, InterpreterError> {
+        match self.values.borrow().get(&name.lexeme) {
             Some(val) => Ok(val.clone()),
             None => {
-                match self.enclosing.as_mut() {
-                    Some(enclosing) => enclosing.borrow_mut().get(name),
+                match &self.enclosing {
+                    Some(enclosing) => enclosing.get(name),
                     None => {
                         let err_msg = format!("Undefined variable '{}'", &name.lexeme);
                         Err(InterpreterError::OperatorError { line: name.line, err_msg})
@@ -40,30 +40,31 @@ impl Environment {
         }
     }
 
-    pub fn get_at(&mut self, distance: usize, name: &Token) -> Result<TokenLiteral, InterpreterError> {
+    pub fn get_at(&self, distance: usize, name: &Token) -> Result<TokenLiteral, InterpreterError> {
         if distance == 0 {
             return self.get(name)
         }
-        self.ancestor(distance).deref().borrow_mut().get(name)
+        self.ancestor(distance).deref().get(name)
     }
 
-    fn ancestor(&mut self, distance: usize) -> Rc<RefCell<Environment>> {
+    fn ancestor(&self, distance: usize) -> Rc<Environment> {
         let mut env = self.enclosing.clone().unwrap();
         for _ in 1..distance {
-            env = env.deref().take().enclosing.unwrap().clone();
+            // env = env.deref().take().enclosing.unwrap().clone();
+            env = env.enclosing.clone().unwrap()
         }
         env
     }
 
-    pub fn assign(&mut self, name: &Token, value: TokenLiteral) -> Result<(), InterpreterError> {
-        match self.values.get_mut(&name.lexeme) {
+    pub fn assign(&self, name: &Token, value: TokenLiteral) -> Result<(), InterpreterError> {
+        match self.values.borrow_mut().get_mut(&name.lexeme) {
             Some(val) => {
                 *val = value;
                 Ok(())
             }
             None => {
-                match self.enclosing.as_mut() {
-                    Some(enclosing) => enclosing.borrow_mut().assign(name, value),
+                match &self.enclosing {
+                    Some(enclosing) => enclosing.assign(name, value),
                     None => {
                         let err_msg = format!("Undefined variable '{}'.", &name.lexeme);
                         Err(InterpreterError::OperatorError{line: name.line, err_msg})
@@ -73,14 +74,14 @@ impl Environment {
         }
     }
 
-    pub fn assign_at(&mut self, distance: usize, name: &Token, value: TokenLiteral) -> Result<(), InterpreterError> {
+    pub fn assign_at(&self, distance: usize, name: &Token, value: TokenLiteral) -> Result<(), InterpreterError> {
         if distance == 0 {
             return self.assign(name, value);
         }
-        self.ancestor(distance).deref().borrow_mut().assign(name, value)
+        self.ancestor(distance).deref().assign(name, value)
     }
 
-    pub fn init_native_funcs(&mut self) {
+    pub fn init_native_funcs(&self) {
         // Native functions are extensible via implementing the LoxCallable trait object on them
         // Clock
         self.define(String::from("clock"),TokenLiteral::LOX_CALLABLE(Rc::new(LoxCallable::Native(NativeFunction::NativeClock(Clock)))));
