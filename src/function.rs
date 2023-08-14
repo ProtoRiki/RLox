@@ -31,7 +31,7 @@ impl LoxFunction {
                 }
 
                 // Update internal call stack
-                interpreter.environments.push(Box::new(environment));
+                interpreter.environments.push(environment);
                 let res = interpreter.execute_block(body);
                 interpreter.environments.pop();
                 res
