@@ -1,6 +1,5 @@
 use std::fmt::{Display, Formatter};
 use std::iter::zip;
-use std::rc::Rc;
 
 use crate::environment::Environment;
 use crate::interpreter::{Interpreter, InterpreterError};
@@ -10,13 +9,12 @@ use crate::token_literal::TokenLiteral;
 
 pub struct LoxFunction {
     declaration: Stmt,
-    closure: Rc<Environment>
 }
 
 impl LoxFunction {
-    pub fn new(declaration: Stmt, closure: Rc<Environment>) -> Self {
+    pub fn new(declaration: Stmt) -> Self {
         match declaration {
-            Stmt::Function { .. } => Self { declaration, closure },
+            Stmt::Function { .. } => Self { declaration },
             _ => panic!("Non-function declaration passed to LoxFunction constructor")
         }
     }
@@ -27,11 +25,16 @@ impl LoxFunction {
         match &self.declaration {
             Stmt::Function { ptr } => {
                 let FunctionObject { params, body , .. } = ptr.as_ref();
-                let environment = Environment::new(Some(Rc::clone(&self.closure)));
+                let mut environment = Environment::new();
                 for (param_name, value) in zip(params.iter(), arguments.into_iter()) {
                     environment.define(param_name.lexeme.clone(), value);
                 }
-                interpreter.execute_block(body, Rc::new(environment))
+
+                // Update internal call stack
+                interpreter.environments.push(Box::new(environment));
+                let res = interpreter.execute_block(body);
+                interpreter.environments.pop();
+                res
             }
             _ => unreachable!()
         }
