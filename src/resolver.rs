@@ -29,6 +29,7 @@ impl <'a> Resolver <'a> {
     pub fn resolve_stmt(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::Block { .. } => self.resolve_block_stmt(stmt),
+            Stmt::Class { .. } => self.resolve_class_stmt(stmt),
             Stmt::Expression { .. } => self.resolve_expression_stmt(stmt),
             Stmt::Function { .. } => self.resolve_function_stmt(stmt),
             Stmt::If { .. } => self.resolve_if_stmt(stmt),
@@ -96,6 +97,16 @@ impl <'a> Resolver <'a> {
                 self.end_scope();
             }
             _ => unreachable!("Non-block statement passed to block resolver visitor")
+        }
+    }
+
+    fn resolve_class_stmt(&mut self, stmt: &Stmt) {
+        match stmt {
+            Stmt::Class { name, .. } => {
+                self.declare_var(name);
+                self.define_var(name);
+            }
+            _ => unreachable!("Non-class statement passed to class resolver visitor")
         }
     }
 

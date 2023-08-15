@@ -14,6 +14,8 @@ mod clock;
 mod function_object;
 mod native;
 mod resolver;
+mod class;
+mod class_instance;
 
 use std::env;
 use std::cmp::Ordering;

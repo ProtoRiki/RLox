@@ -39,6 +39,11 @@ impl Parser {
         if self.match_token(&[VAR]) {
             return self.var_declaration();
         }
+
+        if self.match_token(&[CLASS]) {
+            return self.class_declaration();
+        }
+
         self.statement().map_err(|error| { self.synchronize(); error })
     }
 
@@ -73,6 +78,17 @@ impl Parser {
         }
         self.consume(SEMICOLON, "Expect ';' after variable declaration.")?;
         Ok(Stmt::Var { name, initializer })
+    }
+
+    fn class_declaration(&mut self) -> Result<Stmt, String> {
+        let name = self.consume(IDENTIFIER, "Expected class name")?;
+        self.consume(LEFT_BRACE, "Expect '{' before class body.")?;
+        let mut methods = Vec::new();
+        while !self.check(RIGHT_BRACE) && !self.is_at_end() {
+            methods.push(self.function_declaration(String::from("method"))?);
+        }
+        self.consume(RIGHT_BRACE, "Expect '}' after class body.")?;
+        Ok(Stmt::Class { name, methods })
     }
 
     fn statement(&mut self) -> Result<Stmt, String> {

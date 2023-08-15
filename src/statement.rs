@@ -8,6 +8,11 @@ pub enum Stmt {
         statements: Vec<Stmt>,
     },
 
+    Class {
+        name: Token,
+        methods: Vec<Stmt>,
+    },
+
     Expression {
         expression: Box<Expr>,
     },

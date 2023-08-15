@@ -2,15 +2,16 @@ use std::mem;
 use std::rc::Rc;
 use std::collections::HashMap;
 use std::ops::Deref;
-use crate::callable::LoxCallable;
 
+use crate::callable::LoxCallable;
+use crate::class::LoxClass;
 use crate::environment::Environment;
 use crate::expression::Expr::{self, *};
+use crate::function::LoxFunction;
 use crate::lox;
 use crate::statement::Stmt::{self, *};
 use crate::token_literal::TokenLiteral;
 use crate::token_type::TokenType::*;
-use crate::function::LoxFunction;
 
 pub struct Interpreter {
     pub global_env: Rc<Environment>,
@@ -55,6 +56,7 @@ impl Interpreter {
     fn accept_statement(&mut self, stmt: &Stmt) -> Result<TokenLiteral, InterpreterError> {
         match stmt {
             Block { .. } => self.visit_block_stmt(stmt),
+            Class { .. } => self.visit_class_stmt(stmt),
             Expression { .. } => self.visit_expression_stmt(stmt),
             Function { .. } => self.visit_function_stmt(stmt),
             Print { .. } => self.visit_print_stmt(stmt),
@@ -76,6 +78,7 @@ impl Interpreter {
         }
         Ok(TokenLiteral::LOX_NULL)
     }
+
     pub fn execute_block(&mut self, statements: &[Stmt], environment: Rc<Environment>) -> Result<TokenLiteral, InterpreterError> {
         let previous = mem::replace(&mut self.curr_env, environment);
         for statement in statements.iter() {
@@ -96,6 +99,18 @@ impl Interpreter {
         }
         self.curr_env = previous;
         Ok(TokenLiteral::LOX_NULL)
+    }
+
+    fn visit_class_stmt(&mut self, stmt: &Stmt) -> Result<TokenLiteral, InterpreterError> {
+        match stmt {
+            Class { name, .. } => {
+                self.curr_env.define(name.lexeme.clone(), TokenLiteral::LOX_NULL);
+                let class = LoxCallable::ClassConstructor(Rc::new(LoxClass::new(name.lexeme.clone())));
+                self.curr_env.assign(name, TokenLiteral::LOX_CALLABLE(Rc::new(class)))?;
+                Ok(TokenLiteral::LOX_NULL)
+            }
+            _ => unreachable!("Non-class statement passed to class visitor")
+        }
     }
 
     fn visit_expression_stmt(&mut self, stmt: &Stmt) -> Result<TokenLiteral, InterpreterError> {
@@ -329,7 +344,13 @@ impl Interpreter {
                 match callee {
                     TokenLiteral::LOX_CALLABLE(callable) => {
                         match callable.arity() == parameters.len() {
-                            true => callable.call(self, parameters),
+                            true => {
+                                if let LoxCallable::ClassConstructor(_) = *callable {
+                                    // Add class instance as last parameter
+                                    parameters.push(TokenLiteral::LOX_CALLABLE(Rc::clone(&callable)));
+                                }
+                                callable.call(self, parameters)
+                            },
                             false => {
                                 let err_msg = format!("Expected {} arguments but got {}.", callable.arity(), parameters.len());
                                 Err(InterpreterError::OperatorError { line: paren.line, err_msg})
