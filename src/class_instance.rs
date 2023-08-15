@@ -1,14 +1,38 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::rc::Rc;
+
 use crate::class::LoxClass;
+use crate::interpreter::InterpreterError;
+use crate::token::Token;
+use crate::token_literal::TokenLiteral;
 
 pub struct LoxInstance {
-    class: Rc<LoxClass>
+    class: Rc<LoxClass>,
+    fields: RefCell<HashMap<String, TokenLiteral>>,
 }
 
 impl LoxInstance {
     pub fn new(class: Rc<LoxClass>) -> Self {
-        Self { class }
+        Self { class, fields: RefCell::new(HashMap::new()) }
+    }
+
+    pub fn get(&self, name: &Token) -> Result<TokenLiteral, InterpreterError> {
+        if self.fields.borrow().contains_key(&name.lexeme) {
+            return Ok(self.fields.borrow().get(&name.lexeme).unwrap().clone());
+        }
+
+        if let Some(method) = self.class.find_method(&name.lexeme) {
+            return Ok(method);
+        }
+
+        let err_msg = format!("Undefined property '{}'", name.lexeme);
+        Err(InterpreterError::OperatorError {err_msg, line: name.line})
+    }
+
+    pub fn set(&self, name: &Token, value: TokenLiteral) {
+        self.fields.borrow_mut().insert(name.lexeme.clone(), value);
     }
 }
 

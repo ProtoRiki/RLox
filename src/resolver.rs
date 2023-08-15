@@ -4,7 +4,6 @@ use crate::expression::Expr;
 use crate::function_object::FunctionObject;
 use crate::interpreter::Interpreter;
 use crate::lox;
-use crate::resolver::FunctionType::NoFunction;
 use crate::statement::Stmt;
 use crate::token::Token;
 
@@ -17,13 +16,14 @@ pub struct Resolver <'a> {
 
 #[derive(Eq, PartialEq, Copy, Clone)]
 enum FunctionType {
-    NoFunction,
-    Function,
+    NO_FUNCTION,
+    FUNCTION,
+    METHOD,
 }
 
 impl <'a> Resolver <'a> {
     pub fn new (interpreter: &'a mut Interpreter) -> Self {
-        Self { interpreter, scopes: Vec::new(), current_function: NoFunction }
+        Self { interpreter, scopes: Vec::new(), current_function: FunctionType::NO_FUNCTION }
     }
 
     pub fn resolve_stmt(&mut self, stmt: &Stmt) {
@@ -31,7 +31,7 @@ impl <'a> Resolver <'a> {
             Stmt::Block { .. } => self.resolve_block_stmt(stmt),
             Stmt::Class { .. } => self.resolve_class_stmt(stmt),
             Stmt::Expression { .. } => self.resolve_expression_stmt(stmt),
-            Stmt::Function { .. } => self.resolve_function_stmt(stmt),
+            Stmt::Function { .. } => self.resolve_function_stmt(stmt, FunctionType::FUNCTION),
             Stmt::If { .. } => self.resolve_if_stmt(stmt),
             Stmt::Print { .. } => self.resolve_print_stmt(stmt),
             Stmt::Return { .. } => self.resolve_return_stmt(stmt),
@@ -45,9 +45,11 @@ impl <'a> Resolver <'a> {
             Expr::Assign { .. } => self.resolve_assign_expr(expr),
             Expr::Binary { .. } => self.resolve_binary_expr(expr),
             Expr::Call { .. } => self.resolve_call_expr(expr),
+            Expr::Get { .. } => self.resolve_get_expr(expr),
             Expr::Grouping { .. } => self.resolve_grouping_expr(expr),
             Expr::Literal { .. } => self.resolve_literal_expr(expr),
             Expr::Logical { .. } => self.resolve_logical_expr(expr),
+            Expr::Set { .. } => self.resolve_set_expr(expr),
             Expr::Unary { .. } => self.resolve_unary_expr(expr),
             Expr::Variable { .. } => self.resolve_var_expr(expr)
         }
@@ -102,9 +104,14 @@ impl <'a> Resolver <'a> {
 
     fn resolve_class_stmt(&mut self, stmt: &Stmt) {
         match stmt {
-            Stmt::Class { name, .. } => {
+            Stmt::Class { name, methods } => {
                 self.declare_var(name);
                 self.define_var(name);
+
+                for method in methods.iter() {
+                    let declaration = FunctionType::METHOD;
+                    self.resolve_function_stmt(method, declaration);
+                }
             }
             _ => unreachable!("Non-class statement passed to class resolver visitor")
         }
@@ -121,13 +128,13 @@ impl <'a> Resolver <'a> {
         }
     }
 
-    fn resolve_function_stmt(&mut self, stmt: &Stmt) {
+    fn resolve_function_stmt(&mut self, stmt: &Stmt, function_type: FunctionType) {
         match stmt {
             Stmt::Function { ptr } => {
                 let name = &ptr.as_ref().name;
                 self.declare_var(name);
                 self.define_var(name);
-                self.resolve_function(ptr, FunctionType::Function)
+                self.resolve_function(ptr, function_type)
             }
             _ => unreachable!("Non-function statement passed to function resolver visitor")
         }
@@ -176,7 +183,7 @@ impl <'a> Resolver <'a> {
     fn resolve_return_stmt(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::Return { keyword, value } => {
-                if self.current_function == NoFunction {
+                if self.current_function == FunctionType::NO_FUNCTION {
                     lox::token_error(keyword, "Can't return from top-level code.");
                 }
                 self.resolve_expr(value)
@@ -256,6 +263,13 @@ impl <'a> Resolver <'a> {
         }
     }
 
+    fn resolve_get_expr(&mut self, expr: &Expr) {
+        match expr {
+            Expr::Get { object, .. } => self.resolve_expr(object),
+            _ => unreachable!("Non-get expression passed to get resolver visitor")
+        }
+    }
+
     fn resolve_grouping_expr(&mut self, expr: &Expr) {
         match expr {
             Expr::Grouping { expression } => self.resolve_expr(expression),
@@ -278,6 +292,16 @@ impl <'a> Resolver <'a> {
                 self.resolve_expr(right);
             }
             _ => unreachable!("Non-logical expression passed to logical resolver visitor")
+        }
+    }
+
+    fn resolve_set_expr(&mut self, expr: &Expr) {
+        match expr {
+            Expr::Set { object, value, .. } => {
+                self.resolve_expr(object);
+                self.resolve_expr(value);
+            }
+            _ => unreachable!("Non-set expression passed to set resolver visitor")
         }
     }
 

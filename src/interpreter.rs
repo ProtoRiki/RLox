@@ -45,9 +45,11 @@ impl Interpreter {
             Assign { .. } => self.visit_assign_expr(expr),
             Binary { .. } => self.visit_binary_expr(expr),
             Call { .. } => self.visit_call_expr(expr),
+            Get { .. } => self.visit_get_expr(expr),
             Grouping { .. } => self.visit_grouping_expr(expr),
             Literal { .. } => self.visit_literal_expr(expr),
             Logical { .. } => self.visit_logical_expr(expr),
+            Set { .. } => self.visit_set_expr(expr),
             Unary { .. } => self.visit_unary_expr(expr),
             Variable { .. } => self.visit_variable_expr(expr),
         }
@@ -103,9 +105,30 @@ impl Interpreter {
 
     fn visit_class_stmt(&mut self, stmt: &Stmt) -> Result<TokenLiteral, InterpreterError> {
         match stmt {
-            Class { name, .. } => {
+            Class { name, methods } => {
                 self.curr_env.define(name.lexeme.clone(), TokenLiteral::LOX_NULL);
-                let class = LoxCallable::ClassConstructor(Rc::new(LoxClass::new(name.lexeme.clone())));
+
+                let mut class_methods = HashMap::new();
+                for method in methods.iter() {
+                    match method {
+                        Function { ptr } => {
+                            let name = ptr.name.lexeme.clone();
+
+                            // A bunch of type-checking boilerplate
+                            let function = Rc::clone(ptr);
+                            let function = LoxFunction::new(Function { ptr: function },
+                                                            Rc::clone(&self.curr_env));
+
+                            class_methods.insert(name, Rc::new(function));
+                        }
+                        _ => {
+                            let err_msg = String::from("Non-method objects found in class body");
+                            return Err(InterpreterError::OperatorError { err_msg, line: name.line })
+                        }
+                    }
+                }
+
+                let class = LoxCallable::ClassConstructor(Rc::new(LoxClass::new(name.lexeme.clone(), class_methods)));
                 self.curr_env.assign(name, TokenLiteral::LOX_CALLABLE(Rc::new(class)))?;
                 Ok(TokenLiteral::LOX_NULL)
             }
@@ -175,7 +198,7 @@ impl Interpreter {
                 let curr_env = self.curr_env.clone();
                 let function_obj = Function { ptr: Rc::clone(ptr) };
                 let function_obj = LoxFunction::new(function_obj, curr_env);
-                let function = Rc::new(LoxCallable::UserFunction(function_obj));
+                let function = Rc::new(LoxCallable::UserFunction(Rc::new(function_obj)));
                 self.curr_env.define(ptr.as_ref().name.lexeme.clone(), TokenLiteral::LOX_CALLABLE(function));
                 Ok(TokenLiteral::LOX_NULL)
             }
@@ -420,6 +443,42 @@ impl Interpreter {
                 Ok(value)
             }
             _ => unreachable!("Non-assignment expression passed to assignment visitor")
+        }
+    }
+
+    fn visit_get_expr(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
+        match expr {
+            Get { object, name , .. } => {
+                let object = self.accept_expr(object)?;
+                match object {
+                    TokenLiteral::LOX_INSTANCE(instance) => instance.get(name),
+                    _ => {
+                        let err_msg = String::from("Only instances have properties.");
+                        Err(InterpreterError::OperatorError { err_msg, line: name.line})
+                    }
+                }
+            },
+            _ => unreachable!("Non-get expression passed to get visitor")
+        }
+    }
+
+    fn visit_set_expr(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
+        match expr {
+            Set { object, name , value, .. } => {
+                let object = self.accept_expr(object)?;
+                match object {
+                    TokenLiteral::LOX_INSTANCE(instance) => {
+                        let value = self.accept_expr(value)?;
+                        instance.set(name, value.clone());
+                        Ok(value)
+                    }
+                    _ => {
+                        let err_msg = String::from("Only instances have properties.");
+                        Err(InterpreterError::OperatorError { err_msg, line: name.line})
+                    }
+                }
+            },
+            _ => unreachable!("Non-get expression passed to get visitor")
         }
     }
 

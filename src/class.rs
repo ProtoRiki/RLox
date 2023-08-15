@@ -1,20 +1,22 @@
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::ops::Deref;
 use std::rc::Rc;
 use crate::callable::LoxCallable;
 
 use crate::class_instance::LoxInstance;
+use crate::function::LoxFunction;
 use crate::interpreter::{Interpreter, InterpreterError};
 use crate::token_literal::TokenLiteral;
 
-#[derive(Clone)]
 pub struct LoxClass {
-    name: String
+    name: String,
+    methods: HashMap<String, Rc<LoxFunction>>,
 }
 
 impl LoxClass {
-    pub fn new(name: String) -> Self {
-        Self { name }
+    pub fn new(name: String, methods: HashMap<String, Rc<LoxFunction>>) -> Self {
+        Self { name, methods }
     }
 
     pub fn call(&self, _interpreter: &mut Interpreter, arguments: Vec<TokenLiteral>) -> Result<TokenLiteral, InterpreterError> {
@@ -29,6 +31,14 @@ impl LoxClass {
 
     pub fn arity(&self) -> usize {
         0
+    }
+
+    pub fn find_method(&self, key: &String) -> Option<TokenLiteral> {
+        if self.methods.contains_key(key) {
+            let method = self.methods.get(key).unwrap();
+            return Some(TokenLiteral::LOX_CALLABLE(Rc::new(LoxCallable::UserFunction(Rc::clone(method)))));
+        }
+        None
     }
 }
 

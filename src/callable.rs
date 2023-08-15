@@ -8,7 +8,7 @@ use crate::native::NativeFunction;
 
 pub enum LoxCallable {
     Native(NativeFunction),
-    UserFunction(LoxFunction),
+    UserFunction(Rc<LoxFunction>),
     ClassConstructor(Rc<LoxClass>),
 }
 

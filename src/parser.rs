@@ -242,6 +242,11 @@ impl Parser {
                     self.curr_id += 1;
                     Ok(Box::new(Assign { name, value, id }))
                 },
+                Get { object, name, .. } => {
+                    let id = self.curr_id;
+                    self.curr_id += 1;
+                    Ok(Box::new(Set { object, name, value, id }))
+                }
                 _ => {
                     // Error if left-hand-side is an invalid assignment target
                     // Report error but do not throw it
@@ -363,6 +368,12 @@ impl Parser {
         loop {
             if self.match_token(&[LEFT_PAREN]) {
                 expr = self.finish_call(expr)?;
+            }
+            else if self.match_token(&[DOT]) {
+                let name = self.consume(IDENTIFIER, "Expect property name after '.'.")?;
+                let id = self.curr_id;
+                self.curr_id += 1;
+                expr = Box::new(Get { object: expr, name, id });
             }
             else {
                 break;
