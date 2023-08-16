@@ -4,7 +4,7 @@ use crate::class::LoxClass;
 use crate::function::LoxFunction;
 use crate::interpreter::{Interpreter, InterpreterError};
 use crate::token_literal::TokenLiteral;
-use crate::native::NativeFunction;
+use crate::native_function::NativeFunction;
 
 pub enum LoxCallable {
     Native(NativeFunction),

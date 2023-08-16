@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::callable::LoxCallable;
 use crate::clock::Clock;
 use crate::interpreter::InterpreterError;
-use crate::native::NativeFunction;
+use crate::native_function::NativeFunction;
 use crate::token_literal::TokenLiteral;
 use crate::token::Token;
 
