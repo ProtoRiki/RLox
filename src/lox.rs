@@ -83,21 +83,22 @@ pub fn token_error(token: &Token, message: &str) {
         report(token.line, "at end", message);
     }
     else {
-        report(token.line, &format!(" at '{}'", token.lexeme), message);
+        report(token.line, &format!("at '{}'", token.lexeme), message);
     }
 }
 
 pub fn runtime_error(error: &InterpreterError) {
     match error {
         InterpreterError::OperatorError { line, err_msg } => {
-            eprintln!("[line {}] Runtime Error {}", line, err_msg);
+            eprintln!("[line {}] Runtime Error: {}", line, err_msg);
         }
+        _ => unreachable!("Early return should not be passed as a runtime error")
     }
     unsafe { HAD_RUNTIME_ERROR = true }
 
 }
 
 pub fn report(line: i32, loc: &str, message: &str) {
-    eprintln!("[line {line}] Syntax Error: {loc}: {message}");
+    eprintln!("[line {line}] Syntax Error: {loc} -- {message}");
     unsafe { HAD_ERROR = true; }
 }

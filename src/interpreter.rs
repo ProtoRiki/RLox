@@ -21,6 +21,7 @@ pub struct Interpreter {
 
 pub enum InterpreterError {
     OperatorError { line: i32, err_msg: String },
+    Return(TokenLiteral),
 }
 
 impl Interpreter {
@@ -50,6 +51,7 @@ impl Interpreter {
             Literal { .. } => self.visit_literal_expr(expr),
             Logical { .. } => self.visit_logical_expr(expr),
             Set { .. } => self.visit_set_expr(expr),
+            This { .. } => self.visit_this_expr(expr),
             Unary { .. } => self.visit_unary_expr(expr),
             Variable { .. } => self.visit_variable_expr(expr),
         }
@@ -90,7 +92,8 @@ impl Interpreter {
                     // Exit block early on reaching return
                     _ => {
                         self.curr_env = previous;
-                        return Ok(literal);
+                        // Wrap return value in an error to propagate up to nearest function call
+                        return Err(InterpreterError::Return(literal));
                     }
                 }
                 Err(error) => {
@@ -100,6 +103,8 @@ impl Interpreter {
             }
         }
         self.curr_env = previous;
+
+        // Block ends 'naturally' when no errors or inner-returns are reached
         Ok(TokenLiteral::LOX_NULL)
     }
 
@@ -117,7 +122,8 @@ impl Interpreter {
                             // A bunch of type-checking boilerplate
                             let function = Rc::clone(ptr);
                             let function = LoxFunction::new(Function { ptr: function },
-                                                            Rc::clone(&self.curr_env));
+                                                            Rc::clone(&self.curr_env),
+                                                            &ptr.name.lexeme == "init");
 
                             class_methods.insert(name, Rc::new(function));
                         }
@@ -197,7 +203,7 @@ impl Interpreter {
             Function { ptr } => {
                 let curr_env = self.curr_env.clone();
                 let function_obj = Function { ptr: Rc::clone(ptr) };
-                let function_obj = LoxFunction::new(function_obj, curr_env);
+                let function_obj = LoxFunction::new(function_obj, curr_env, false);
                 let function = Rc::new(LoxCallable::UserFunction(Rc::new(function_obj)));
                 self.curr_env.define(ptr.as_ref().name.lexeme.clone(), TokenLiteral::LOX_CALLABLE(function));
                 Ok(TokenLiteral::LOX_NULL)
@@ -210,7 +216,7 @@ impl Interpreter {
         match stmt {
             Return { value, .. } => {
                 let value = self.accept_expr(value)?;
-                Ok(value)
+                Err(InterpreterError::Return(value))
             }
             _ => unreachable!("Non-return statement passed to return visitor")
         }
@@ -275,9 +281,7 @@ impl Interpreter {
                             LESS => Ok(TokenLiteral::LOX_BOOL(left < right)),
                             LESS_EQUAL => Ok(TokenLiteral::LOX_BOOL(left <= right)),
                             _ => {
-                                let err_msg = String::from(
-                                    "Unrecognized operator passed between two numbers",
-                                );
+                                let err_msg = String::from("Unrecognized operator passed between two numbers");
                                 Err(InterpreterError::OperatorError { line: operator.line, err_msg })
                             }
                         }
@@ -297,9 +301,7 @@ impl Interpreter {
                                 Ok(TokenLiteral::LOX_BOOL(!Interpreter::is_equal(left, right)))
                             }
                             _ => {
-                                let err_msg = String::from(
-                                    "Non-concatenating operator passed between two strings",
-                                );
+                                let err_msg = String::from("Non-concatenating operator passed between two strings");
                                 Err(InterpreterError::OperatorError { line: operator.line, err_msg })
                             }
                         }
@@ -318,8 +320,7 @@ impl Interpreter {
                                 Ok(TokenLiteral::LOX_BOOL(!Interpreter::is_equal(left, right)))
                             }
                             _ => {
-                                let err_msg =
-                                    String::from("Non-equality operators passed between two bools");
+                                let err_msg = String::from("Non-equality operators passed between two bools");
                                 Err(InterpreterError::OperatorError { line: operator.line, err_msg })
                             }
                         }
@@ -335,11 +336,30 @@ impl Interpreter {
                             TokenLiteral::LOX_NULL,
                         ))),
                         _ => {
-                            let err_msg =
-                                String::from("Non-equality operators passed between two nils");
+                            let err_msg = String::from("Non-equality operators passed between two nils");
                             Err(InterpreterError::OperatorError { line: operator.line, err_msg })
                         }
                     },
+                    (TokenLiteral::LOX_CALLABLE(left), TokenLiteral::LOX_CALLABLE(right)) => {
+                        match operator.token_type {
+                            EQUAL_EQUAL => Ok(TokenLiteral::LOX_BOOL(Rc::ptr_eq(&left, &right))),
+                            BANG_EQUAL => Ok(TokenLiteral::LOX_BOOL(!Rc::ptr_eq(&left, &right))),
+                            _ => {
+                                let err_msg = String::from("Non-equality operators passed between two function pointers");
+                                Err(InterpreterError::OperatorError { line: operator.line, err_msg })
+                            }
+                        }
+                    },
+                    (TokenLiteral::LOX_INSTANCE(left), TokenLiteral::LOX_INSTANCE(right)) => {
+                        match operator.token_type {
+                            EQUAL_EQUAL => Ok(TokenLiteral::LOX_BOOL(Rc::ptr_eq(&left, &right))),
+                            BANG_EQUAL => Ok(TokenLiteral::LOX_BOOL(!Rc::ptr_eq(&left, &right))),
+                            _ => {
+                                let err_msg = String::from("Non-equality operators passed between two class instances");
+                                Err(InterpreterError::OperatorError { line: operator.line, err_msg })
+                            }
+                        }
+                    }
                     // Operands of arbitrary, non-equal types
                     (_, _) => match operator.token_type {
                         EQUAL_EQUAL => Ok(TokenLiteral::LOX_BOOL(false)),
@@ -416,7 +436,7 @@ impl Interpreter {
 
     fn lookup_variable(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
         match expr {
-            Variable { name, id } => {
+            Variable { name, id } | This { name, id } => {
                 match self.locals.get(id) {
                     Some(distance) => self.curr_env.deref().get_at(*distance, name),
                     None => self.global_env.deref().get(name)
@@ -451,7 +471,7 @@ impl Interpreter {
             Get { object, name , .. } => {
                 let object = self.accept_expr(object)?;
                 match object {
-                    TokenLiteral::LOX_INSTANCE(instance) => instance.get(name),
+                    TokenLiteral::LOX_INSTANCE(instance) => instance.get(Rc::clone(&instance), name),
                     _ => {
                         let err_msg = String::from("Only instances have properties.");
                         Err(InterpreterError::OperatorError { err_msg, line: name.line})
@@ -473,13 +493,17 @@ impl Interpreter {
                         Ok(value)
                     }
                     _ => {
-                        let err_msg = String::from("Only instances have properties.");
+                        let err_msg = String::from("Only instances have fields.");
                         Err(InterpreterError::OperatorError { err_msg, line: name.line})
                     }
                 }
             },
             _ => unreachable!("Non-get expression passed to get visitor")
         }
+    }
+
+    fn visit_this_expr(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
+        self.lookup_variable(expr)
     }
 
     fn is_truthy(literal: &TokenLiteral) -> bool {
@@ -502,7 +526,7 @@ impl Interpreter {
 
     pub fn resolve(&mut self, expr: &Expr, depth: usize) {
         match expr {
-            Variable { id, .. } | Assign { id, .. } => {
+            Variable { id, .. } | Assign { id, .. } | This { id, .. }=> {
                 self.locals.insert(*id, depth);
             }
             _ => unreachable!("Non-local variable accessing statement passed to local resolver")

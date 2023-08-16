@@ -165,6 +165,8 @@ impl Parser {
 
     fn for_statement(&mut self) -> Result<Stmt, String> {
         self.consume(LEFT_PAREN, "Expect '(' after 'for'")?;
+
+        // Grab initializer
         // ; -> initializer omitted
         // var -> initializer included
         // no var -> no initialization, must be expression
@@ -174,6 +176,7 @@ impl Parser {
             (false, false) => (self.expression_statement()?, true),
         };
 
+        // Grab looping condition
         let condition = if !self.check(SEMICOLON) {
             self.expression()?
         } else {
@@ -181,6 +184,7 @@ impl Parser {
         };
         self.consume(SEMICOLON, "Expect ';' after loop condition")?;
 
+        // Grab increment expression
         let (increment, had_increment) = if !self.check(RIGHT_PAREN) {
             (self.expression()?, true)
         } else {
@@ -188,31 +192,37 @@ impl Parser {
         };
         self.consume(RIGHT_PAREN, "Expect ')' after for clause")?;
 
-        let body = self.statement()?;
-
         // De-sugar the for-loop into a while-loop
-
-        let mut statements = Vec::new();
+        let mut desugared_statements = Vec::new();
 
         if had_initializer {
-            statements.push(initializer);
+            // Initializer is only run once
+            desugared_statements.push(initializer);
         }
 
-        let mut body = match body {
-            Stmt::Block { statements } => statements,
+        let body = self.statement()?;
+        let mut loop_body = match body {
+            Stmt::Block { statements } => statements ,
+            // Single statement (i.e. no braces) becomes a vector of one statement
             _ => vec![body]
         };
 
         if had_increment {
-            body.push(Stmt::Expression {expression: increment});
+            // Increment is in the outer scope, loop body is in the inner scope
+            // This prevents redeclaring the looping index from affecting the loop condition
+            loop_body = vec![Stmt::Block { statements: loop_body }, Stmt::Expression { expression: increment }]
         }
+        let outer_body = Box::new(Stmt::Block { statements: loop_body });
 
-        let body = Box::new(Stmt::Block { statements: body});
-        if statements.is_empty() {
-            Ok(Stmt::While { expression: condition, body})
+        if had_initializer {
+            desugared_statements.push(Stmt::While { expression: condition, body: outer_body });
+            // Block looks like this:
+            // { Init { Condition?, Body{...}, Increment? } }
+            Ok(Stmt::Block { statements: desugared_statements })
         } else {
-            statements.push(Stmt::While { expression: condition, body});
-            Ok(Stmt::Block {statements})
+            // Block looks like this:
+            // { Condition?, Body {...}, Increment? }
+            Ok(Stmt::While { expression: condition, body: outer_body })
         }
     }
 
@@ -416,6 +426,12 @@ impl Parser {
             return Ok(Box::new(Literal { value: TokenLiteral::LOX_NULL }));
         }
 
+        if self.match_token(&[THIS]) {
+            let id = self.curr_id;
+            self.curr_id += 1;
+            return Ok(Box::new( This { name: self.take_previous(), id }));
+        }
+
         if self.match_token(&[IDENTIFIER]) {
             let id = self.curr_id;
             self.curr_id += 1;
@@ -446,16 +462,14 @@ impl Parser {
     fn synchronize(&mut self) {
         self.advance();
         while !self.is_at_end() {
-            if self.take_previous().token_type == SEMICOLON {
-                return;
-            }
+            if self.take_previous().token_type == SEMICOLON { return; }
             match self.peek().token_type {
                 CLASS | FUN | VAR | FOR | IF | WHILE | PRINT | RETURN => {
                     return;
                 }
                 _ => (),
             }
+            self.advance();
         }
-        self.advance();
     }
 }

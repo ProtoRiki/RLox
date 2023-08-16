@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::rc::Rc;
+use crate::callable::LoxCallable;
 
 use crate::class::LoxClass;
 use crate::interpreter::InterpreterError;
@@ -18,13 +19,15 @@ impl LoxInstance {
         Self { class, fields: RefCell::new(HashMap::new()) }
     }
 
-    pub fn get(&self, name: &Token) -> Result<TokenLiteral, InterpreterError> {
+    pub fn get(&self, self_rc: Rc<Self>, name: &Token) -> Result<TokenLiteral, InterpreterError> {
         if self.fields.borrow().contains_key(&name.lexeme) {
             return Ok(self.fields.borrow().get(&name.lexeme).unwrap().clone());
         }
 
         if let Some(method) = self.class.find_method(&name.lexeme) {
-            return Ok(method);
+            let function = method.bind(self_rc);
+            let function = TokenLiteral::LOX_CALLABLE(Rc::new(LoxCallable::UserFunction(Rc::new(function))));
+            return Ok(function);
         }
 
         let err_msg = format!("Undefined property '{}'", name.lexeme);

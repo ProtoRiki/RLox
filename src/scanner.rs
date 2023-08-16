@@ -145,7 +145,7 @@ impl Scanner {
     }
 
     fn string(&mut self) {
-        while self.get_source_char(None) != b'"' && !self.is_at_end() {
+        while !self.is_at_end() && self.get_source_char(None) != b'"'  {
             if self.get_source_char(None) == b'\n' {
                 self.line += 1
             }

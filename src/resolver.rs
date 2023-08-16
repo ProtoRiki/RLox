@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::rc::Rc;
 use crate::expression::Expr;
 use crate::function_object::FunctionObject;
@@ -6,24 +7,35 @@ use crate::interpreter::Interpreter;
 use crate::lox;
 use crate::statement::Stmt;
 use crate::token::Token;
+use crate::token_literal::TokenLiteral;
 
 // Resolver traverses all AST nodes in a single pass
 pub struct Resolver <'a> {
     interpreter: &'a mut Interpreter,
     scopes: Vec<HashMap<String, bool>>,
-    current_function: FunctionType
+    current_function: FunctionType,
+    current_class: ClassType,
 }
 
+#[allow(non_camel_case_types)]
 #[derive(Eq, PartialEq, Copy, Clone)]
 enum FunctionType {
     NO_FUNCTION,
+    INITIALIZER,
     FUNCTION,
     METHOD,
 }
 
+#[allow(non_camel_case_types)]
+#[derive(Eq, PartialEq, Copy, Clone)]
+enum ClassType {
+    NO_CLASS,
+    CLASS
+}
+
 impl <'a> Resolver <'a> {
     pub fn new (interpreter: &'a mut Interpreter) -> Self {
-        Self { interpreter, scopes: Vec::new(), current_function: FunctionType::NO_FUNCTION }
+        Self { interpreter, scopes: Vec::new(), current_function: FunctionType::NO_FUNCTION, current_class: ClassType::NO_CLASS }
     }
 
     pub fn resolve_stmt(&mut self, stmt: &Stmt) {
@@ -50,6 +62,7 @@ impl <'a> Resolver <'a> {
             Expr::Literal { .. } => self.resolve_literal_expr(expr),
             Expr::Logical { .. } => self.resolve_logical_expr(expr),
             Expr::Set { .. } => self.resolve_set_expr(expr),
+            Expr::This { .. } => self.resolve_this_expr(expr),
             Expr::Unary { .. } => self.resolve_unary_expr(expr),
             Expr::Variable { .. } => self.resolve_var_expr(expr)
         }
@@ -105,13 +118,29 @@ impl <'a> Resolver <'a> {
     fn resolve_class_stmt(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::Class { name, methods } => {
+                let enclosing_class = self.current_class;
+
+                self.current_class = ClassType::CLASS;
                 self.declare_var(name);
                 self.define_var(name);
 
+                self.begin_scope();
+                // Resolve a 'this' to the local variable in the current method scope
+                self.scopes.last_mut().unwrap().insert(String::from("this"), true);
+
                 for method in methods.iter() {
-                    let declaration = FunctionType::METHOD;
+                    let declaration = match method {
+                        Stmt::Function { ptr } => {
+                            if ptr.name.lexeme == "init" { FunctionType::INITIALIZER } else { FunctionType::METHOD }
+                        }
+                        _ => unreachable!()
+                    };
                     self.resolve_function_stmt(method, declaration);
                 }
+
+                self.end_scope();
+
+                self.current_class = enclosing_class;
             }
             _ => unreachable!("Non-class statement passed to class resolver visitor")
         }
@@ -186,6 +215,16 @@ impl <'a> Resolver <'a> {
                 if self.current_function == FunctionType::NO_FUNCTION {
                     lox::token_error(keyword, "Can't return from top-level code.");
                 }
+
+                match value.deref() {
+                    Expr::Literal { value: TokenLiteral::LOX_NULL } => (),
+                    _ => {
+                        if self.current_function == FunctionType::INITIALIZER {
+                            lox::token_error(keyword, "Can't return a value from an initializer");
+                        }
+                    }
+                };
+
                 self.resolve_expr(value)
             },
             _ => unreachable!("Non-return statement passed to return resolver visitor")
@@ -302,6 +341,19 @@ impl <'a> Resolver <'a> {
                 self.resolve_expr(value);
             }
             _ => unreachable!("Non-set expression passed to set resolver visitor")
+        }
+    }
+
+    fn resolve_this_expr(&mut self, expr: &Expr) {
+        match expr {
+            Expr::This { name: keyword, .. } => {
+                if self.current_class == ClassType::NO_CLASS {
+                    lox::token_error(keyword, "Can't use 'this' outside of a class.");
+                    return;
+                }
+                self.resolve_local_var(expr, keyword)
+            },
+            _ => unreachable!("Non-this expression passed to this-keyword resolver visitor")
         }
     }
 
