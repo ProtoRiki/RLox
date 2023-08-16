@@ -82,13 +82,23 @@ impl Parser {
 
     fn class_declaration(&mut self) -> Result<Stmt, String> {
         let name = self.consume(IDENTIFIER, "Expected class name")?;
-        self.consume(LEFT_BRACE, "Expect '{' before class body.")?;
+
+        let superclass = if self.match_token(&[LESS]) {
+            let res = self.consume(IDENTIFIER, "Expected superclass name")?;
+
+            // If for some reason we have a clash of Abstract Syntax Node id's, we have bigger problems to worry about
+            Some(Box::new(Variable { name: res, id: usize::MAX }))
+        } else {
+            None
+        };
+
+        self.consume(LEFT_BRACE, "Expect '{' before class body")?;
         let mut methods = Vec::new();
         while !self.check(RIGHT_BRACE) && !self.is_at_end() {
             methods.push(self.function_declaration(String::from("method"))?);
         }
-        self.consume(RIGHT_BRACE, "Expect '}' after class body.")?;
-        Ok(Stmt::Class { name, methods })
+        self.consume(RIGHT_BRACE, "Expect '}' after class body")?;
+        Ok(Stmt::Class { name, methods, superclass })
     }
 
     fn statement(&mut self) -> Result<Stmt, String> {

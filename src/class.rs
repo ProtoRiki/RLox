@@ -11,12 +11,13 @@ use crate::token_literal::TokenLiteral;
 
 pub struct LoxClass {
     name: String,
+    superclass: Option<Rc<LoxClass>>,
     methods: HashMap<String, Rc<LoxFunction>>,
 }
 
 impl LoxClass {
-    pub fn new(name: String, methods: HashMap<String, Rc<LoxFunction>>) -> Self {
-        Self { name, methods }
+    pub fn new(name: String, superclass: Option<Rc<LoxClass>>, methods: HashMap<String, Rc<LoxFunction>>) -> Self {
+        Self { name, superclass, methods }
     }
 
     pub fn call(&self, interpreter: &mut Interpreter, arguments: Vec<TokenLiteral>) -> Result<TokenLiteral, InterpreterError> {
@@ -49,6 +50,9 @@ impl LoxClass {
         if self.methods.contains_key(key) {
             let method = self.methods.get(key).unwrap();
             return Some(Rc::clone(method));
+        }
+        if self.superclass.is_some() {
+            return self.superclass.as_ref().unwrap().find_method(key);
         }
         None
     }

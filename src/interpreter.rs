@@ -110,7 +110,22 @@ impl Interpreter {
 
     fn visit_class_stmt(&mut self, stmt: &Stmt) -> Result<TokenLiteral, InterpreterError> {
         match stmt {
-            Class { name, methods } => {
+            Class { name, methods, superclass } => {
+                if superclass.is_some() {
+                    // Verify that the superclass is, in-fact, a class
+                    let Variable { name, .. } = superclass.as_ref().unwrap().as_ref() else {
+                        unreachable!("Superclass expression should've been passed as a Variable node")
+                    };
+                    let superclass = self.accept_expr(superclass.as_ref().unwrap())?;
+                    match superclass {
+                        TokenLiteral::LOX_CALLABLE(callable) if matches!(callable.deref(), LoxCallable::ClassConstructor(_)) => (),
+                        _ => {
+                            let err_msg = String::from("Superclass must be a class");
+                            return Err(InterpreterError::OperatorError {line: name.line, err_msg});
+                        }
+                    }
+                }
+
                 self.curr_env.define(name.lexeme.clone(), TokenLiteral::LOX_NULL);
 
                 let mut class_methods = HashMap::new();
@@ -133,8 +148,18 @@ impl Interpreter {
                         }
                     }
                 }
+                let superclass = match superclass {
+                    None => None,
+                    Some(expr) => match self.accept_expr(expr) {
+                        Ok(TokenLiteral::LOX_CALLABLE(constructor)) => match constructor.deref() {
+                            LoxCallable::ClassConstructor(class) => Some(Rc::clone(class)),
+                            _ => unreachable!("Arm already checked above")
+                        }
+                        _ => unreachable!("Arm already checked above")
+                    }
+                };
 
-                let class = LoxCallable::ClassConstructor(Rc::new(LoxClass::new(name.lexeme.clone(), class_methods)));
+                let class = LoxCallable::ClassConstructor(Rc::new(LoxClass::new(name.lexeme.clone(), superclass, class_methods)));
                 self.curr_env.assign(name, TokenLiteral::LOX_CALLABLE(Rc::new(class)))?;
                 Ok(TokenLiteral::LOX_NULL)
             }

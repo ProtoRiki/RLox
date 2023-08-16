@@ -117,12 +117,23 @@ impl <'a> Resolver <'a> {
 
     fn resolve_class_stmt(&mut self, stmt: &Stmt) {
         match stmt {
-            Stmt::Class { name, methods } => {
+            Stmt::Class { name, methods, superclass } => {
                 let enclosing_class = self.current_class;
 
                 self.current_class = ClassType::CLASS;
                 self.declare_var(name);
                 self.define_var(name);
+
+                if superclass.is_some() {
+                    let superclass = superclass.as_ref().unwrap();
+                    if let Expr::Variable { name: super_name , .. } = superclass.deref() {
+                        if name.lexeme == super_name.lexeme {
+                            lox::token_error(super_name, "A class can't inherit from itself.");
+                        }
+                    }
+
+                    self.resolve_expr(&superclass);
+                }
 
                 self.begin_scope();
                 // Resolve a 'this' to the local variable in the current method scope
