@@ -30,7 +30,8 @@ enum FunctionType {
 #[derive(Eq, PartialEq, Copy, Clone)]
 enum ClassType {
     NO_CLASS,
-    CLASS
+    CLASS,
+    SUBCLASS
 }
 
 impl <'a> Resolver <'a> {
@@ -62,6 +63,7 @@ impl <'a> Resolver <'a> {
             Expr::Literal { .. } => self.resolve_literal_expr(expr),
             Expr::Logical { .. } => self.resolve_logical_expr(expr),
             Expr::Set { .. } => self.resolve_set_expr(expr),
+            Expr::Super { .. } => self.resolve_super_expr(expr),
             Expr::This { .. } => self.resolve_this_expr(expr),
             Expr::Unary { .. } => self.resolve_unary_expr(expr),
             Expr::Variable { .. } => self.resolve_var_expr(expr)
@@ -131,8 +133,11 @@ impl <'a> Resolver <'a> {
                             lox::token_error(super_name, "A class can't inherit from itself.");
                         }
                     }
+                    self.current_class = ClassType::SUBCLASS;
+                    self.resolve_expr(superclass);
 
-                    self.resolve_expr(&superclass);
+                    self.begin_scope();
+                    self.scopes.last_mut().unwrap().insert(String::from("super"), true);
                 }
 
                 self.begin_scope();
@@ -150,6 +155,10 @@ impl <'a> Resolver <'a> {
                 }
 
                 self.end_scope();
+
+                if superclass.is_some() {
+                    self.end_scope();
+                }
 
                 self.current_class = enclosing_class;
             }
@@ -352,6 +361,24 @@ impl <'a> Resolver <'a> {
                 self.resolve_expr(value);
             }
             _ => unreachable!("Non-set expression passed to set resolver visitor")
+        }
+    }
+
+    fn resolve_super_expr(&mut self, expr: &Expr) {
+        match expr {
+            Expr::Super { keyword, .. } => {
+                match self.current_class {
+                    ClassType::NO_CLASS => {
+                        lox::token_error(keyword, "Can't use 'super' outside of a class.");
+                    }
+                    ClassType::CLASS => {
+                        lox::token_error(keyword, "Can't use 'super' in a class with no superclass.");
+                    }
+                    _ => ()
+                }
+                self.resolve_local_var(expr, keyword);
+            }
+            _ => unreachable!("Non-super expression passed to super resolver visitor")
         }
     }
 

@@ -5,11 +5,13 @@ use std::ops::Deref;
 
 use crate::callable::LoxCallable;
 use crate::class::LoxClass;
+use crate::class_instance::LoxInstance;
 use crate::environment::Environment;
 use crate::expression::Expr::{self, *};
 use crate::function::LoxFunction;
 use crate::lox;
 use crate::statement::Stmt::{self, *};
+use crate::token::Token;
 use crate::token_literal::TokenLiteral;
 use crate::token_type::TokenType::*;
 
@@ -51,6 +53,7 @@ impl Interpreter {
             Literal { .. } => self.visit_literal_expr(expr),
             Logical { .. } => self.visit_logical_expr(expr),
             Set { .. } => self.visit_set_expr(expr),
+            Super { .. } => self.visit_super_expr(expr),
             This { .. } => self.visit_this_expr(expr),
             Unary { .. } => self.visit_unary_expr(expr),
             Variable { .. } => self.visit_variable_expr(expr),
@@ -111,22 +114,30 @@ impl Interpreter {
     fn visit_class_stmt(&mut self, stmt: &Stmt) -> Result<TokenLiteral, InterpreterError> {
         match stmt {
             Class { name, methods, superclass } => {
-                if superclass.is_some() {
-                    // Verify that the superclass is, in-fact, a class
-                    let Variable { name, .. } = superclass.as_ref().unwrap().as_ref() else {
-                        unreachable!("Superclass expression should've been passed as a Variable node")
-                    };
-                    let superclass = self.accept_expr(superclass.as_ref().unwrap())?;
-                    match superclass {
-                        TokenLiteral::LOX_CALLABLE(callable) if matches!(callable.deref(), LoxCallable::ClassConstructor(_)) => (),
+                let superclass = match superclass {
+                    None => Ok(None),
+                    Some(expr) => match self.accept_expr(expr) {
+                        Ok(TokenLiteral::LOX_CALLABLE(constructor)) => match constructor.deref() {
+                            LoxCallable::ClassConstructor(class) => Ok(Some(Rc::clone(class))),
+                            _ => {
+                                let err_msg = String::from("Superclass must be a class");
+                                Err(InterpreterError::OperatorError {line: name.line, err_msg})
+                            }
+                        }
                         _ => {
                             let err_msg = String::from("Superclass must be a class");
-                            return Err(InterpreterError::OperatorError {line: name.line, err_msg});
+                            Err(InterpreterError::OperatorError {line: name.line, err_msg})
                         }
                     }
-                }
+                }?;
 
                 self.curr_env.define(name.lexeme.clone(), TokenLiteral::LOX_NULL);
+
+                // let mut prev_env = None;
+                if let Some(class) = &superclass {
+                    self.curr_env = Rc::new(Environment::new(Some(Rc::clone(&self.curr_env))));
+                    self.curr_env.define(String::from("super"), TokenLiteral::LOX_INSTANCE(Rc::new(LoxInstance::new(Rc::clone(class)))));
+                }
 
                 let mut class_methods = HashMap::new();
                 for method in methods.iter() {
@@ -148,16 +159,11 @@ impl Interpreter {
                         }
                     }
                 }
-                let superclass = match superclass {
-                    None => None,
-                    Some(expr) => match self.accept_expr(expr) {
-                        Ok(TokenLiteral::LOX_CALLABLE(constructor)) => match constructor.deref() {
-                            LoxCallable::ClassConstructor(class) => Some(Rc::clone(class)),
-                            _ => unreachable!("Arm already checked above")
-                        }
-                        _ => unreachable!("Arm already checked above")
-                    }
-                };
+
+                if superclass.is_some() {
+                    self.curr_env = mem::take(&mut Rc::clone(self.curr_env.enclosing.as_ref().unwrap()));
+                }
+
 
                 let class = LoxCallable::ClassConstructor(Rc::new(LoxClass::new(name.lexeme.clone(), superclass, class_methods)));
                 self.curr_env.assign(name, TokenLiteral::LOX_CALLABLE(Rc::new(class)))?;
@@ -527,6 +533,31 @@ impl Interpreter {
         }
     }
 
+    fn visit_super_expr(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
+        // This is by far the most spaghetti piece of code I've ever written
+
+        let Super { keyword, id, method } = expr else {
+            unreachable!("Non-super expression passed to super visitor")
+        };
+        let distance = self.locals.get(id).unwrap();
+        let superclass = self.curr_env.get_at(*distance, keyword)?;
+        let TokenLiteral::LOX_INSTANCE(superclass ) = superclass else {
+            unreachable!("'super' maps to Lox_Callable token literals")
+        };
+
+        let dummy_this = Token { token_type: NIL, line: -1, lexeme: String::from("this"), literal: TokenLiteral::LOX_NULL};
+        let TokenLiteral::LOX_INSTANCE(instance) = self.curr_env.get_at(*distance - 1, &dummy_this)? else {
+            unreachable!()
+        };
+
+        let super_method = superclass.class.find_method(&method.lexeme);
+        if super_method.is_none() {
+            let err_msg = format!("Undefined property '{}'", method.lexeme);
+            return Err(InterpreterError::OperatorError {line: method.line, err_msg});
+        }
+        Ok(TokenLiteral::LOX_CALLABLE(Rc::new(LoxCallable::UserFunction(Rc::new(super_method.unwrap().bind(instance))))))
+    }
+
     fn visit_this_expr(&mut self, expr: &Expr) -> Result<TokenLiteral, InterpreterError> {
         self.lookup_variable(expr)
     }
@@ -551,7 +582,7 @@ impl Interpreter {
 
     pub fn resolve(&mut self, expr: &Expr, depth: usize) {
         match expr {
-            Variable { id, .. } | Assign { id, .. } | This { id, .. }=> {
+            Variable { id, .. } | Assign { id, .. } | This { id, .. } | Super { id, .. }=> {
                 self.locals.insert(*id, depth);
             }
             _ => unreachable!("Non-local variable accessing statement passed to local resolver")

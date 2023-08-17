@@ -436,6 +436,16 @@ impl Parser {
             return Ok(Box::new(Literal { value: TokenLiteral::LOX_NULL }));
         }
 
+        if self.match_token(&[SUPER]) {
+            let keyword = self.take_previous();
+            self.consume(DOT, "Expect '.' after 'super'.")?;
+            let method = self.consume(IDENTIFIER,"Expect superclass method name.")?;
+
+            let id = self.curr_id;
+            self.curr_id += 1;
+            return Ok(Box::new(Super { keyword, method, id }));
+        }
+
         if self.match_token(&[THIS]) {
             let id = self.curr_id;
             self.curr_id += 1;

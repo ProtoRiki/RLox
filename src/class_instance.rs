@@ -10,7 +10,7 @@ use crate::token::Token;
 use crate::token_literal::TokenLiteral;
 
 pub struct LoxInstance {
-    class: Rc<LoxClass>,
+    pub class: Rc<LoxClass>,
     fields: RefCell<HashMap<String, TokenLiteral>>,
 }
 
